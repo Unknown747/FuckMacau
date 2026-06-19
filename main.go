@@ -663,6 +663,202 @@ func dueGapBonus(sesiOnly []string, d2 string) float64 {
         return 3.5
 }
 
+// ── Upgrade 1: Sesi-Specific Markov (sesi N hari ini → sesi N besok) ──────────
+// Berbeda dengan markovSesiTransition (S4→S5), ini melacak S5→S5 lintas hari.
+func markovSesiSelf(entries []rawEntry, sesi int) map[string]map[string]float64 {
+        sesiSeq := []string{}
+        for _, e := range entries {
+                if e.sesi == sesi && len(e.nomor) >= 4 {
+                        sesiSeq = append(sesiSeq, e.nomor[2:4])
+                }
+        }
+        trans := map[string]map[string]float64{}
+        for i := 1; i < len(sesiSeq); i++ {
+                from, to := sesiSeq[i-1], sesiSeq[i]
+                if trans[from] == nil {
+                        trans[from] = map[string]float64{}
+                }
+                trans[from][to]++
+        }
+        for from, toMap := range trans {
+                total := 0.0
+                for _, c := range toMap {
+                        total += c
+                }
+                if total > 0 {
+                        for to := range toMap {
+                                trans[from][to] /= total
+                        }
+                }
+        }
+        return trans
+}
+
+// ── Upgrade 2: Digit Pair Correlation (korelasi puluhan→satuan) ───────────────
+// Jika digit puluhan dari result sesi sebelumnya adalah X, 2D mana yang
+// paling sering muncul di sesi target? Mendeteksi pola posisional tersembunyi.
+func digitPairCorrelation(entries []rawEntry, targetSesi int) map[string]float64 {
+        scores := map[string]float64{}
+        prevSesi := targetSesi - 1
+        if prevSesi < 1 {
+                prevSesi = 6
+        }
+        // Pasangkan hasil prevSesi dan targetSesi per tanggal
+        byDate := map[string]map[int]string{}
+        for _, e := range entries {
+                if byDate[e.tanggal] == nil {
+                        byDate[e.tanggal] = map[int]string{}
+                }
+                byDate[e.tanggal][e.sesi] = e.nomor
+        }
+        tensFreq := map[string]map[string]float64{}
+        for _, sesiMap := range byDate {
+                prev := sesiMap[prevSesi]
+                curr := sesiMap[targetSesi]
+                if len(prev) < 4 || len(curr) < 4 {
+                        continue
+                }
+                tens := string(prev[2]) // digit puluhan result sesi sebelumnya
+                d2 := curr[2:4]
+                if tensFreq[tens] == nil {
+                        tensFreq[tens] = map[string]float64{}
+                }
+                tensFreq[tens][d2]++
+        }
+        // Cari digit puluhan dari result prevSesi terakhir
+        lastPrev := ""
+        for i := len(entries) - 1; i >= 0; i-- {
+                if entries[i].sesi == prevSesi && len(entries[i].nomor) >= 4 {
+                        lastPrev = entries[i].nomor
+                        break
+                }
+        }
+        if len(lastPrev) < 4 {
+                return scores
+        }
+        tens := string(lastPrev[2])
+        if distMap, ok := tensFreq[tens]; ok {
+                total := 0.0
+                for _, c := range distMap {
+                        total += c
+                }
+                if total > 0 {
+                        for d2, c := range distMap {
+                                scores[d2] = c / total
+                        }
+                }
+        }
+        return scores
+}
+
+// ── Upgrade 3: Rolling Window Adaptif ────────────────────────────────────────
+// Pilih window (hari) yang menghasilkan distribusi paling terkonsentrasi
+// (coefficient of variation tertinggi) untuk sesi target.
+func adaptiveWindow(entries []rawEntry, targetSesi int, now time.Time) int {
+        windows := []int{14, 21, 30, 45, 60}
+        bestWindow := 45
+        bestCV := 0.0
+        for _, w := range windows {
+                cutoff := now.AddDate(0, 0, -w)
+                freq := map[string]int{}
+                total := 0
+                for _, e := range entries {
+                        if e.sesi != targetSesi || len(e.nomor) < 4 {
+                                continue
+                        }
+                        t, err := time.Parse("2006-01-02", e.tanggal)
+                        if err != nil || t.Before(cutoff) {
+                                continue
+                        }
+                        freq[e.nomor[2:4]]++
+                        total++
+                }
+                if total < 5 || len(freq) == 0 {
+                        continue
+                }
+                mean := float64(total) / float64(len(freq))
+                variance := 0.0
+                for _, c := range freq {
+                        diff := float64(c) - mean
+                        variance += diff * diff
+                }
+                variance /= float64(len(freq))
+                cv := math.Sqrt(variance) / mean
+                if cv > bestCV {
+                        bestCV = cv
+                        bestWindow = w
+                }
+        }
+        return bestWindow
+}
+
+// ── Upgrade 5: Pola Hari dalam Seminggu ──────────────────────────────────────
+// 2D yang sering muncul di hari-yang-sama-minggu-lalu mendapat bobot lebih.
+func dowPattern(entries []rawEntry, targetSesi int, now time.Time) map[string]float64 {
+        targetDow := now.Weekday()
+        counts := map[string]float64{}
+        total := 0.0
+        for _, e := range entries {
+                if e.sesi != targetSesi || len(e.nomor) < 4 {
+                        continue
+                }
+                t, err := time.Parse("2006-01-02", e.tanggal)
+                if err != nil || t.Weekday() != targetDow {
+                        continue
+                }
+                counts[e.nomor[2:4]]++
+                total++
+        }
+        if total == 0 {
+                return counts
+        }
+        for d2 := range counts {
+                counts[d2] /= total
+        }
+        return counts
+}
+
+// ── Upgrade 6: Consecutive Gap Analysis ──────────────────────────────────────
+// Lebih presisi dari dueGapBonus: bandingkan gap sekarang dengan rata-rata
+// gap historis. Jika gap sekarang >> rata-rata → overdue → bonus besar.
+func gapAnalysis(sesiOnly []string, d2 string) float64 {
+        var positions []int
+        for i, s := range sesiOnly {
+                if s == d2 {
+                        positions = append(positions, i)
+                }
+        }
+        if len(positions) == 0 {
+                return 4.0 // belum pernah muncul → bonus eksplorasi
+        }
+        currentGap := len(sesiOnly) - positions[len(positions)-1]
+        if len(positions) == 1 {
+                return math.Min(float64(currentGap)*0.4, 6.0)
+        }
+        // Hitung rata-rata gap antar kemunculan
+        avgGap := 0.0
+        for i := 1; i < len(positions); i++ {
+                avgGap += float64(positions[i] - positions[i-1])
+        }
+        avgGap /= float64(len(positions) - 1)
+        if avgGap <= 0 {
+                return 0
+        }
+        ratio := float64(currentGap) / avgGap
+        switch {
+        case ratio >= 3.0:
+                return math.Min(ratio*3.5, 18.0) // sangat overdue
+        case ratio >= 2.0:
+                return ratio * 2.5
+        case ratio >= 1.2:
+                return ratio * 1.5
+        case ratio >= 0.8:
+                return 1.0 // sekitar normal
+        default:
+                return math.Max(ratio*0.4, 0.1) // baru muncul
+        }
+}
+
 func analyzeD2Enhanced(targetSesi int) []D2Stat {
         now := nowWIB()
         allEntries := getAllResults()
@@ -670,8 +866,10 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 return nil
         }
 
-        // ── (1) Batasi hanya 45 hari terakhir ────────────────────────────────────
-        cutoff := now.AddDate(0, 0, -45)
+        // ── Upgrade 3: Rolling Window Adaptif ────────────────────────────────────
+        // Pilih window yang menghasilkan distribusi paling terkonsentrasi.
+        days := adaptiveWindow(allEntries, targetSesi, now)
+        cutoff := now.AddDate(0, 0, -days)
         var filtered []rawEntry
         for _, e := range allEntries {
                 t, err := time.Parse("2006-01-02", e.tanggal)
@@ -684,7 +882,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 return nil
         }
 
-        // ── (3) Bobot sesiFreq dinamis dari akurasi historis sesi ini ────────────
+        // Bobot sesiFreq dinamis dari akurasi historis sesi ini (auto-learning)
         sesiWeight := calcSesiWeight(targetSesi)
 
         type stat struct {
@@ -694,20 +892,14 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 lastSesiIdx int
                 markov      float64
                 streak      float64
-                due         float64
+                gap         float64 // Upgrade 6: gapAnalysis (menggantikan due)
+                dow         float64 // Upgrade 5: day-of-week pattern
+                corr        float64 // Upgrade 2: digit pair correlation
         }
         stats := map[string]*stat{}
         ensure := func(d2 string) {
                 if stats[d2] == nil {
                         stats[d2] = &stat{lastIdx: 9999, lastSesiIdx: 9999}
-                }
-        }
-
-        // Urutan D2 seluruh riwayat
-        allD2Sequence := []string{}
-        for _, e := range allEntries {
-                if len(e.nomor) >= 4 {
-                        allD2Sequence = append(allD2Sequence, e.nomor[2:4])
                 }
         }
 
@@ -773,7 +965,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
         }
 
-        // Streak & Due per sesi
+        // ── Streak & Gap Analysis (Upgrade 6) ────────────────────────────────────
         seenD2 := map[string]bool{}
         for _, d2 := range sesiOnly {
                 seenD2[d2] = true
@@ -781,10 +973,11 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
         for d2 := range seenD2 {
                 ensure(d2)
                 stats[d2].streak = streakBonus(sesiOnly, d2)
-                stats[d2].due = dueGapBonus(sesiOnly, d2)
+                stats[d2].gap = gapAnalysis(sesiOnly, d2) // gantikan dueGapBonus
         }
-        // Digit yang belum pernah muncul di sesi ini juga dapat due bonus
-        for _, d := range []string{"00","01","02","03","04","05","06","07","08","09",
+        // D2 yang belum pernah muncul di sesi ini → bonus eksplorasi dari gapAnalysis
+        for _, d := range []string{
+                "00","01","02","03","04","05","06","07","08","09",
                 "10","11","12","13","14","15","16","17","18","19",
                 "20","21","22","23","24","25","26","27","28","29",
                 "30","31","32","33","34","35","36","37","38","39",
@@ -796,17 +989,24 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 "90","91","92","93","94","95","96","97","98","99"} {
                 if !seenD2[d] {
                         ensure(d)
-                        stats[d].due = 8.0
+                        stats[d].gap = gapAnalysis(sesiOnly, d) // akan return 4.0
                 }
         }
 
-        // Markov Chain umum: gunakan D2 terakhir dari sesi sebelumnya (lebih relevan)
-        markovGen := markovTransition(allEntries)
+        // ── Upgrade 5: Day-of-Week pattern ───────────────────────────────────────
+        for d2, score := range dowPattern(allEntries, targetSesi, now) {
+                ensure(d2)
+                stats[d2].dow = score
+        }
+
+        // ── Markov: umum + sesi-to-sesi + self + lintas sesi + periodik ──────────
         prevSesi := targetSesi - 1
         if prevSesi < 1 {
                 prevSesi = 6
         }
-        // Cari result terakhir dari prevSesi (bukan global last)
+
+        // Markov umum (semua sesi, dari result prevSesi terakhir)
+        markovGen := markovTransition(allEntries)
         lastPrevSesiD2 := ""
         for i := len(allEntries) - 1; i >= 0; i-- {
                 if allEntries[i].sesi == prevSesi && len(allEntries[i].nomor) >= 4 {
@@ -818,15 +1018,33 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 if nextProbs, ok := markovGen[lastPrevSesiD2]; ok {
                         for d2, prob := range nextProbs {
                                 ensure(d2)
-                                stats[d2].markov += prob * 6.0
+                                stats[d2].markov += prob * 5.0
                         }
                 }
         }
 
-        // Markov transisi sesi N-1 → sesi N (bobot tinggi, hanya sesi yang sama hari)
+        // Markov sesi N-1 → sesi N (pola antar-sesi dalam sehari)
         for d2, prob := range markovSesiTransition(allEntries, prevSesi, targetSesi) {
                 ensure(d2)
                 stats[d2].markov += prob * 8.0
+        }
+
+        // ── Upgrade 1: Sesi-Self Markov (sesi N → sesi N hari berikutnya) ────────
+        selfMarkov := markovSesiSelf(allEntries, targetSesi)
+        lastSelfD2 := ""
+        for i := len(allEntries) - 1; i >= 0; i-- {
+                if allEntries[i].sesi == targetSesi && len(allEntries[i].nomor) >= 4 {
+                        lastSelfD2 = allEntries[i].nomor[2:4]
+                        break
+                }
+        }
+        if lastSelfD2 != "" {
+                if nextProbs, ok := selfMarkov[lastSelfD2]; ok {
+                        for d2, prob := range nextProbs {
+                                ensure(d2)
+                                stats[d2].markov += prob * 7.0 // bobot tinggi: pola sesi yg sama
+                        }
+                }
         }
 
         // Pola lintas sesi
@@ -841,15 +1059,27 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 stats[d2].markov += score * 3.5
         }
 
-        // Gabungkan skor — hanya D2 yang pernah muncul di sesi ini atau punya Markov score
-        // Gunakan sesiWeight (auto-learning) sebagai pengganti bobot 6.0 yang statis
+        // ── Upgrade 2: Digit Pair Correlation ────────────────────────────────────
+        for d2, score := range digitPairCorrelation(allEntries, targetSesi) {
+                ensure(d2)
+                stats[d2].corr = score
+        }
+
+        // ── Gabungkan semua komponen ke skor akhir ────────────────────────────────
         var list []D2Stat
         for d2, s := range stats {
-                // Filter: buang D2 yang benar-benar tidak pernah muncul dan tidak ada sinyal
-                if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 {
+                if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 && s.corr < 0.05 && s.dow < 0.05 {
                         continue
                 }
-                score := s.sesiFreq*sesiWeight + s.allFreq*1.5 + s.markov + s.streak + s.due*0.8
+                // Formula: sesiFreq (auto-bobot) + allFreq + markov + streak
+                //          + gap (overdue analysis) + dow (hari minggu) + corr (korelasi posisi)
+                score := s.sesiFreq*sesiWeight +
+                        s.allFreq*1.5 +
+                        s.markov +
+                        s.streak +
+                        s.gap*0.9 +
+                        s.dow*4.5 +
+                        s.corr*5.5
                 lastSeen := s.lastIdx
                 if s.lastSesiIdx < lastSeen {
                         lastSeen = s.lastSesiIdx
