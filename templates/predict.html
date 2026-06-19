@@ -49,7 +49,11 @@
 {{range .Predictions}}
 <div class="pred-card pred-{{.Metode}}">
   <div class="pred-header">
+    {{if eq .Metode "AI-LOKAL"}}
+    <span class="badge-metode badge-AILOKAL">🧠 AI Analisa</span>
+    {{else}}
     <span class="badge-metode badge-{{.Metode}}">{{.Metode}}</span>
+    {{end}}
     {{if .BBFS}}<span class="bbfs-tag">BBFS: <strong>{{.BBFS}}</strong></span>{{end}}
   </div>
 
@@ -71,7 +75,7 @@
 
   {{if .BBFSList}}
   <div class="pred-block">
-    <div class="pred-label">🔢 Digit BBFS</div>
+    <div class="pred-label">🔢 BBFS 5 Digit</div>
     <div class="bbfs-row">
       {{range .BBFSList}}<span class="bbfs-digit">{{.}}</span>{{end}}
     </div>

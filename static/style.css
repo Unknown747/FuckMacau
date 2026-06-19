@@ -48,6 +48,7 @@ code{background:#2d3748;padding:.1em .4em;border-radius:.3em;font-size:.85em;fon
 .badge-GEMINI{background:#553c9a;color:#e9d8fd}
 .badge-MANUAL{background:#2b6cb0;color:#bee3f8}
 .badge-PAITO{background:#276749;color:#9ae6b4}
+.badge-AILOKAL{background:#b7791f;color:#fefcbf}
 
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;padding:.5rem 1rem;border-radius:.5rem;font-size:.85rem;font-weight:600;border:none;cursor:pointer;transition:background .15s,opacity .15s;text-decoration:none;white-space:nowrap}
@@ -116,6 +117,7 @@ textarea.form-input{resize:vertical;font-family:inherit}
 .pred-card{background:#1a202c;border:1px solid #2d3748;border-radius:.75rem;padding:1rem;margin-bottom:1rem}
 .pred-card.pred-GEMINI{border-color:#553c9a}
 .pred-card.pred-PAITO{border-color:#276749}
+.pred-card.pred-AI-LOKAL{border-color:#b7791f}
 .pred-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem}
 .badge-metode{padding:.25em .7em;border-radius:.4em;font-size:.8rem;font-weight:700;letter-spacing:.5px}
 .badge-GEMINI{background:#553c9a;color:#e9d8fd}
