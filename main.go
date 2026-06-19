@@ -1178,21 +1178,23 @@ func recovery(next http.Handler) http.Handler {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// currentSesi mengembalikan sesi yang SEDANG DITUNGGU (upcoming), bukan yang sudah selesai.
+// Jadwal result: S1=00:01  S2=13:00  S3=16:00  S4=19:00  S5=22:00  S6=23:00
 func currentSesi() int {
         h := nowWIB().Hour()
         switch {
         case h >= 0 && h < 13:
-                return 1 // result 00:01
+                return 2 // sesi 1 sudah keluar (00:01), menunggu sesi 2 (13:00)
         case h >= 13 && h < 16:
-                return 2 // result 13:00
+                return 3 // menunggu sesi 3 (16:00)
         case h >= 16 && h < 19:
-                return 3 // result 16:00
+                return 4 // menunggu sesi 4 (19:00)
         case h >= 19 && h < 22:
-                return 4 // result 19:00
+                return 5 // menunggu sesi 5 (22:00)
         case h >= 22 && h < 23:
-                return 5 // result 22:00
+                return 6 // menunggu sesi 6 (23:00)
         default:
-                return 6 // result 23:00
+                return 1 // setelah 23:00, menunggu sesi 1 besok
         }
 }
 
@@ -1246,20 +1248,17 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
         var pred *Prediction
         if lastDate != "" {
-                // Koreksi: jika sesi yang dihitung sudah berlalu berdasarkan jam WIB,
-                // majukan ke sesi berikutnya setelah sesi aktif sekarang.
-                // Contoh: last DB = sesi 3, tapi jam sudah 20:00 (sesi 4 sudah keluar)
-                // → nextSesi seharusnya 5, bukan 4.
+                // Koreksi: jika nextSesi dari DB sudah berlalu, langsung pakai
+                // sesi yang sedang ditunggu sekarang (currentSesi = upcoming sesi).
+                // Contoh: last DB = sesi 3, jam = 20:00 → upcoming=5, bukan 4.
                 nowStr := nowWIB().Format("2006-01-02")
-                if nextDate == nowStr && nextSesi <= currentSesi() {
-                        nextDate, nextSesi = nextSessionAfter(nowStr, currentSesi())
+                if nextDate == nowStr && nextSesi < currentSesi() {
+                        nextSesi = currentSesi()
                 }
                 pred = getPredictionForDate(nextDate, nextSesi)
         } else {
-                // Belum ada data, fallback ke jam WIB
-                clockSesi := currentSesi()
-                clockNext := clockSesi%6 + 1
-                nextSesi = clockNext
+                // Belum ada data, fallback langsung ke sesi yang sedang ditunggu
+                nextSesi = currentSesi()
                 nextDate = nowWIB().Format("2006-01-02")
                 pred = getPredictionForDate(nextDate, nextSesi)
         }
@@ -1375,7 +1374,7 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
         // Ambil sesi berikutnya berdasarkan result terakhir di DB
         lastDate, lastSesi := getLastResultEntry()
         today := nowWIB().Format("2006-01-02")
-        next := currentSesi()%6 + 1
+        next := currentSesi()
 
         if lastDate != "" {
                 var d string
@@ -1383,11 +1382,10 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                 d, s = nextSessionAfter(lastDate, lastSesi)
                 today = d
                 next = s
-                // Koreksi: jika sesi yang dihitung sudah berlalu berdasarkan jam WIB,
-                // majukan ke sesi berikutnya setelah sesi aktif sekarang.
+                // Koreksi: jika nextSesi dari DB sudah berlalu, pakai upcoming sesi.
                 nowStr := nowWIB().Format("2006-01-02")
-                if today == nowStr && next <= currentSesi() {
-                        today, next = nextSessionAfter(nowStr, currentSesi())
+                if today == nowStr && next < currentSesi() {
+                        next = currentSesi()
                 }
         }
 

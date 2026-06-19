@@ -128,13 +128,15 @@
 
 <script>
 // Live WIB clock — jadwal: S1=00:01, S2=13:00, S3=16:00, S4=19:00, S5=22:00, S6=23:00
+// Mengembalikan sesi yang sedang DITUNGGU (upcoming), bukan yang sudah selesai.
+// Jadwal: S1=00:01  S2=13:00  S3=16:00  S4=19:00  S5=22:00  S6=23:00
 function getSesiWIB(h) {
-  if (h >= 0  && h < 13) return 1;
-  if (h >= 13 && h < 16) return 2;
-  if (h >= 16 && h < 19) return 3;
-  if (h >= 19 && h < 22) return 4;
-  if (h >= 22 && h < 23) return 5;
-  return 6;
+  if (h >= 0  && h < 13) return 2;  // setelah S1 (00:01), menunggu S2 (13:00)
+  if (h >= 13 && h < 16) return 3;  // menunggu S3 (16:00)
+  if (h >= 16 && h < 19) return 4;  // menunggu S4 (19:00)
+  if (h >= 19 && h < 22) return 5;  // menunggu S5 (22:00)
+  if (h >= 22 && h < 23) return 6;  // menunggu S6 (23:00)
+  return 1;                          // setelah S6 (23:00), menunggu S1 besok
 }
 function updateClock() {
   var now = new Date();
