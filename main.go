@@ -1246,6 +1246,14 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
         var pred *Prediction
         if lastDate != "" {
+                // Koreksi: jika sesi yang dihitung sudah berlalu berdasarkan jam WIB,
+                // majukan ke sesi berikutnya setelah sesi aktif sekarang.
+                // Contoh: last DB = sesi 3, tapi jam sudah 20:00 (sesi 4 sudah keluar)
+                // → nextSesi seharusnya 5, bukan 4.
+                nowStr := nowWIB().Format("2006-01-02")
+                if nextDate == nowStr && nextSesi <= currentSesi() {
+                        nextDate, nextSesi = nextSessionAfter(nowStr, currentSesi())
+                }
                 pred = getPredictionForDate(nextDate, nextSesi)
         } else {
                 // Belum ada data, fallback ke jam WIB
@@ -1375,6 +1383,12 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                 d, s = nextSessionAfter(lastDate, lastSesi)
                 today = d
                 next = s
+                // Koreksi: jika sesi yang dihitung sudah berlalu berdasarkan jam WIB,
+                // majukan ke sesi berikutnya setelah sesi aktif sekarang.
+                nowStr := nowWIB().Format("2006-01-02")
+                if today == nowStr && next <= currentSesi() {
+                        today, next = nextSessionAfter(nowStr, currentSesi())
+                }
         }
 
         // Override jika ada query param ?tanggal=&sesi= (untuk lihat sesi lain, read-only)
