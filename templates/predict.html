@@ -1,8 +1,8 @@
 {{template "base" .}}
 {{define "content"}}
 <div class="page-header">
-  <h1>🤖 Prediksi AI</h1>
-  <p class="subtitle">Analisa Paito + Gemini AI · Fokus 2D · BBFS 5 Digit</p>
+  <h1>🤖 Prediksi AI Lokal</h1>
+  <p class="subtitle">Markov Chain + Analisa Paito + Pola Sesi · Fokus 2D · BBFS 5 Digit</p>
 </div>
 
 {{if .Error}}
@@ -25,13 +25,6 @@
         </select>
       </div>
     </div>
-    <div class="form-group">
-      <label>🔑 Gemini API Key <span class="hint-inline">(opsional)</span></label>
-      <input type="text" name="api_key" value="{{.GeminiKey}}"
-             placeholder="AIzaSy... (tanpa key: pakai analisa paito saja)"
-             class="form-input" autocomplete="off">
-      <div class="hint">Gratis di <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
-    </div>
     <button type="submit" class="btn btn-primary btn-block" id="genBtn">
       🤖 Generate Prediksi
     </button>
@@ -40,7 +33,7 @@
 
 <div id="loadingBox" class="loading-box" style="display:none">
   <div class="spinner"></div>
-  <span>Menganalisa data{{if .GeminiKey}} + Gemini AI{{end}}...</span>
+  <span>Menganalisa data dengan Markov Chain + Pola Sesi...</span>
 </div>
 
 {{if .Predictions}}
@@ -49,11 +42,7 @@
 {{range .Predictions}}
 <div class="pred-card pred-{{.Metode}}">
   <div class="pred-header">
-    {{if eq .Metode "AI-LOKAL"}}
-    <span class="badge-metode badge-AILOKAL">🧠 AI Analisa</span>
-    {{else}}
-    <span class="badge-metode badge-{{.Metode}}">{{.Metode}}</span>
-    {{end}}
+    <span class="badge-metode badge-AILOKAL">🧠 AI Lokal</span>
     {{if .BBFS}}<span class="bbfs-tag">BBFS: <strong>{{.BBFS}}</strong></span>{{end}}
   </div>
 
@@ -124,18 +113,6 @@
       </tbody>
     </table>
   </div>
-
-  <div class="btn-row">
-    <a href="/bbfs?digits={{.BBFS.Digits}}" class="btn btn-secondary">📋 Buka di BBFS</a>
-    <a href="/filter" class="btn btn-secondary">🔍 Filter Gemini</a>
-  </div>
-</div>
-{{end}}
-
-{{if .GeminiResp}}
-<div class="card">
-  <div class="section-title-sm">💬 Analisa Gemini AI</div>
-  <pre class="gemini-box">{{.GeminiResp}}</pre>
 </div>
 {{end}}
 
