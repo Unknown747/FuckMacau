@@ -1069,18 +1069,18 @@ func recovery(next http.Handler) http.Handler {
 func currentSesi() int {
         h := nowWIB().Hour()
         switch {
+        case h >= 0 && h < 13:
+                return 1 // result 00:01
         case h >= 13 && h < 16:
-                return 1
+                return 2 // result 13:00
         case h >= 16 && h < 19:
-                return 2
-        case h >= 19 && h < 21:
-                return 3
-        case h >= 21 && h < 23:
-                return 4
-        case h >= 23:
-                return 5
+                return 3 // result 16:00
+        case h >= 19 && h < 22:
+                return 4 // result 19:00
+        case h >= 22 && h < 23:
+                return 5 // result 22:00
         default:
-                return 6
+                return 6 // result 23:00
         }
 }
 
