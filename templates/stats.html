@@ -1,0 +1,84 @@
+{{template "base" .}}
+{{define "content"}}
+<div class="page-header">
+  <h1>📊 Statistik Akurasi</h1>
+  <p class="subtitle">Win rate BBFS per sesi · Markov Chain + Analisa Paito</p>
+</div>
+
+{{/* ── Win Rate Total ── */}}
+{{if gt .WR.Total 0}}
+<div class="wr-bar" style="margin-bottom:1.25rem">
+  <div class="wr-item">
+    <span class="wr-label">🎯 Win Rate Total</span>
+    <span class="wr-pct {{if ge .WR.Pct 50}}wr-good{{else if ge .WR.Pct 30}}wr-med{{else}}wr-bad{{end}}">{{.WR.Pct}}%</span>
+  </div>
+  <div class="wr-detail">
+    <span class="wr-hit">✅ {{.WR.Hits}} HIT</span>
+    <span class="wr-sep">·</span>
+    <span class="wr-miss">❌ {{.WR.Miss}} MISS</span>
+    <span class="wr-sep">·</span>
+    <span class="wr-total">{{.WR.Total}} prediksi tervalidasi</span>
+  </div>
+  <div class="wr-progress">
+    <div class="wr-fill {{if ge .WR.Pct 50}}wr-fill-good{{else}}wr-fill-bad{{end}}"
+         style="width:{{.WR.Pct}}%"></div>
+  </div>
+</div>
+{{end}}
+
+{{/* ── Per Sesi ── */}}
+<div class="section-title">📈 Akurasi Per Sesi</div>
+
+<div class="sesi-stats-grid">
+{{range .SesiStats}}
+<div class="sesi-stat-card {{if ge .Pct 50}}sesi-good{{else if ge .Pct 30}}sesi-med{{else}}sesi-bad{{end}}">
+  <div class="sesi-stat-header">
+    <span class="sesi-num">Sesi {{.Sesi}}</span>
+    <span class="sesi-pct {{if ge .Pct 50}}wr-good{{else if ge .Pct 30}}wr-med{{else}}wr-bad{{end}}">{{.Pct}}%</span>
+  </div>
+
+  {{if gt .Total 0}}
+  <div class="sesi-stat-bar">
+    <div class="sesi-bar-fill {{if ge .Pct 50}}wr-fill-good{{else}}wr-fill-bad{{end}}"
+         style="width:{{.Pct}}%"></div>
+  </div>
+  <div class="sesi-stat-detail">
+    <span class="wr-hit">✅ {{.Hits}} HIT</span>
+    <span class="wr-sep">·</span>
+    <span class="wr-miss">❌ {{.Miss}} MISS</span>
+    <span class="wr-sep">·</span>
+    <span class="wr-total">{{.Total}} data</span>
+  </div>
+  {{else}}
+  <div class="sesi-stat-detail muted" style="font-size:.78rem;font-style:italic">Belum cukup data</div>
+  {{end}}
+
+  {{if .BBFS}}
+  <div class="sesi-stat-bbfs">
+    <span class="sesi-bbfs-label">BBFS terbaru:</span>
+    <span class="bbfs-code">{{.BBFS}}</span>
+  </div>
+  {{end}}
+</div>
+{{end}}
+</div>
+
+{{/* ── Jam Sesi ── */}}
+<div class="card" style="margin-top:1.25rem">
+  <div class="card-title">🕐 Jadwal Sesi (WIB)</div>
+  <div class="sesi-schedule">
+    <div class="sched-row"><span class="sched-sesi">Sesi 1</span><span class="sched-jam">13:00 – 15:59</span></div>
+    <div class="sched-row"><span class="sched-sesi">Sesi 2</span><span class="sched-jam">16:00 – 18:59</span></div>
+    <div class="sched-row"><span class="sched-sesi">Sesi 3</span><span class="sched-jam">19:00 – 20:59</span></div>
+    <div class="sched-row"><span class="sched-sesi">Sesi 4</span><span class="sched-jam">21:00 – 22:59</span></div>
+    <div class="sched-row"><span class="sched-sesi">Sesi 5</span><span class="sched-jam">23:00 – 23:59</span></div>
+    <div class="sched-row"><span class="sched-sesi">Sesi 6</span><span class="sched-jam">00:00 – 12:59</span></div>
+  </div>
+  <div class="hint" style="margin-top:.75rem">💡 Input result kapan saja — sistem tetap akurat meski diinput keesokan paginya.</div>
+</div>
+
+<div class="btn-row" style="margin-top:1rem">
+  <a href="/predict" class="btn btn-primary">🤖 Generate Prediksi</a>
+  <a href="/" class="btn btn-secondary">🏠 Dashboard</a>
+</div>
+{{end}}

@@ -15,6 +15,7 @@
     <a href="/paito" onclick="closeNav()">Paito</a>
     <a href="/input" onclick="closeNav()">Result</a>
     <a href="/predict" onclick="closeNav()">Prediksi AI</a>
+    <a href="/stats" onclick="closeNav()">Statistik</a>
   </div>
 </nav>
 <main class="container">
@@ -30,7 +31,6 @@ function toggleNav() {
 function closeNav() {
   document.getElementById('navLinks').classList.remove('open');
 }
-// Highlight active link
 (function(){
   var p = location.pathname;
   document.querySelectorAll('.nav-links a').forEach(function(a){

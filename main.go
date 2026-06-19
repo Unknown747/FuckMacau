@@ -69,6 +69,15 @@ type WinRate struct {
 	Pct   int
 }
 
+type SesiStat struct {
+	Sesi  int
+	Total int
+	Hits  int
+	Miss  int
+	Pct   int
+	BBFS  string
+}
+
 type PaitoCell struct {
 	Nomor string
 	Color string
@@ -108,9 +117,13 @@ type PageData struct {
 	CurrentDate       string
 	CurrentSesi       int
 	NextSesi          int
+	LastResultDate    string
+	LastResultSesi    int
+	NextPredDate      string
 	Stats             *Stats
 	Validations       []BBFSValidation
 	WR                WinRate
+	SesiStats         []SesiStat
 	CurrentPrediction *Prediction
 }
 
@@ -167,6 +180,28 @@ func calcStats() *Stats {
 	var total int
 	db.QueryRow(`SELECT COUNT(*) FROM results`).Scan(&total)
 	return &Stats{Total: total}
+}
+
+// getLastResultEntry ambil result terakhir yang diinput ke DB
+func getLastResultEntry() (tanggal string, sesi int) {
+	db.QueryRow(
+		`SELECT tanggal, sesi FROM results ORDER BY tanggal DESC, sesi DESC LIMIT 1`,
+	).Scan(&tanggal, &sesi)
+	return
+}
+
+// nextSessionAfter hitung sesi berikutnya setelah sesi yang diberikan
+func nextSessionAfter(tanggal string, sesi int) (nextDate string, nextSesi int) {
+	nextSesi = sesi + 1
+	nextDate = tanggal
+	if nextSesi > 6 {
+		nextSesi = 1
+		t, err := time.Parse("2006-01-02", tanggal)
+		if err == nil {
+			nextDate = t.AddDate(0, 0, 1).Format("2006-01-02")
+		}
+	}
+	return
 }
 
 // ── BBFS helpers ──────────────────────────────────────────────────────────────
@@ -231,15 +266,7 @@ func savePrediction(tanggal string, sesi int, digits, source string) {
 }
 
 func autoPredict(tanggal string, sesi int) string {
-	nextSesi := sesi + 1
-	nextDate := tanggal
-	if nextSesi > 6 {
-		nextSesi = 1
-		t, err := time.Parse("2006-01-02", tanggal)
-		if err == nil {
-			nextDate = t.AddDate(0, 0, 1).Format("2006-01-02")
-		}
-	}
+	nextDate, nextSesi := nextSessionAfter(tanggal, sesi)
 
 	var existing string
 	db.QueryRow(`SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL'`,
@@ -329,6 +356,45 @@ func calcWinRate() WinRate {
 	return WinRate{Total: total, Hits: hits, Miss: total - hits, Pct: pct}
 }
 
+// calcSesiStats hitung akurasi per sesi 1-6
+func calcSesiStats() []SesiStat {
+	var result []SesiStat
+	for s := 1; s <= 6; s++ {
+		rows, err := db.Query(`
+			SELECT bp.digits, r.nomor
+			FROM bbfs_preds bp
+			JOIN results r ON r.tanggal = bp.tanggal AND r.sesi = bp.sesi
+			WHERE bp.sesi = ?`, s)
+		total, hits := 0, 0
+		if err == nil {
+			for rows.Next() {
+				var digits, nomor string
+				rows.Scan(&digits, &nomor)
+				if len(nomor) >= 4 {
+					total++
+					if isHit(digits, nomor[2:4]) {
+						hits++
+					}
+				}
+			}
+			rows.Close()
+		}
+		pct := 0
+		if total > 0 {
+			pct = hits * 100 / total
+		}
+		var latestBBFS string
+		db.QueryRow(
+			`SELECT digits FROM bbfs_preds WHERE sesi=? ORDER BY tanggal DESC, id DESC LIMIT 1`, s,
+		).Scan(&latestBBFS)
+
+		result = append(result, SesiStat{
+			Sesi: s, Total: total, Hits: hits, Miss: total - hits, Pct: pct, BBFS: latestBBFS,
+		})
+	}
+	return result
+}
+
 // ── Paito ─────────────────────────────────────────────────────────────────────
 
 func buildPaito(days int) []PaitoRow {
@@ -386,7 +452,7 @@ func d2Color(nomor string) string {
 	return palette[(n/10)%10]
 }
 
-// ── AI Lokal: Analisa data mentah ─────────────────────────────────────────────
+// ── AI Lokal ──────────────────────────────────────────────────────────────────
 
 type rawEntry struct {
 	tanggal string
@@ -394,7 +460,6 @@ type rawEntry struct {
 	nomor   string
 }
 
-// getAllResults ambil SEMUA result dari DB (seluruh riwayat)
 func getAllResults() []rawEntry {
 	rows, err := db.Query(
 		`SELECT tanggal, sesi, nomor FROM results ORDER BY tanggal ASC, sesi ASC`)
@@ -411,12 +476,8 @@ func getAllResults() []rawEntry {
 	return all
 }
 
-// markovTransition hitung probabilitas transisi D2→D2 dari urutan result
-// Menganalisa pola: setelah D2 X keluar, D2 apa yang paling sering muncul berikutnya
 func markovTransition(entries []rawEntry) map[string]map[string]float64 {
-	// trans[from][to] = count
 	trans := map[string]map[string]float64{}
-
 	for i := 1; i < len(entries); i++ {
 		if len(entries[i-1].nomor) < 4 || len(entries[i].nomor) < 4 {
 			continue
@@ -428,8 +489,6 @@ func markovTransition(entries []rawEntry) map[string]map[string]float64 {
 		}
 		trans[from][to]++
 	}
-
-	// Normalisasi menjadi probabilitas
 	for from, toMap := range trans {
 		total := 0.0
 		for _, c := range toMap {
@@ -444,19 +503,13 @@ func markovTransition(entries []rawEntry) map[string]map[string]float64 {
 	return trans
 }
 
-// markovSesiTransition hitung transisi khusus antar sesi
-// Menganalisa: sesi N → sesi N+1, digit apa yang sering muncul
 func markovSesiTransition(entries []rawEntry, fromSesi, toSesi int) map[string]float64 {
-	nextProb := map[string]float64{}
 	counts := map[string]float64{}
 	total := 0.0
-
 	for i := 0; i < len(entries)-1; i++ {
 		cur := entries[i]
 		nxt := entries[i+1]
-		// Pola sesi berurutan dalam sehari, atau sesi 6 → sesi 1 hari berikutnya
-		isSesiTransition := (cur.sesi == fromSesi && nxt.sesi == toSesi)
-		if !isSesiTransition {
+		if !(cur.sesi == fromSesi && nxt.sesi == toSesi) {
 			continue
 		}
 		if len(nxt.nomor) < 4 {
@@ -466,7 +519,7 @@ func markovSesiTransition(entries []rawEntry, fromSesi, toSesi int) map[string]f
 		counts[d2]++
 		total++
 	}
-
+	nextProb := map[string]float64{}
 	if total > 0 {
 		for d2, c := range counts {
 			nextProb[d2] = c / total
@@ -475,12 +528,8 @@ func markovSesiTransition(entries []rawEntry, fromSesi, toSesi int) map[string]f
 	return nextProb
 }
 
-// crossSesiPattern analisa pola lintas sesi: D2 yang sering muncul di sesi target
-// berdasarkan data SEMUA sesi sebelumnya pada hari yang sama
 func crossSesiPattern(entries []rawEntry, targetSesi int) map[string]float64 {
 	scores := map[string]float64{}
-
-	// Kelompokkan per tanggal
 	byDate := map[string]map[int]string{}
 	for _, e := range entries {
 		if byDate[e.tanggal] == nil {
@@ -488,33 +537,26 @@ func crossSesiPattern(entries []rawEntry, targetSesi int) map[string]float64 {
 		}
 		byDate[e.tanggal][e.sesi] = e.nomor
 	}
-
 	for _, sesiMap := range byDate {
 		target, ok := sesiMap[targetSesi]
 		if !ok || len(target) < 4 {
 			continue
 		}
 		targetD2 := target[2:4]
-
-		// Analisa korelasi: digit dari sesi-sesi sebelumnya pada hari itu
 		for s := 1; s < targetSesi; s++ {
 			nomor, ok := sesiMap[s]
 			if !ok || len(nomor) < 4 {
 				continue
 			}
-			prevD2 := nomor[2:4]
-			// Jika D2 sesi sebelumnya sama dengan target, ini pola repetisi
-			if prevD2 == targetD2 {
+			if nomor[2:4] == targetD2 {
 				gap := targetSesi - s
-				weight := 1.0 / float64(gap) // sesi lebih dekat → bobot lebih besar
-				scores[targetD2] += weight
+				scores[targetD2] += 1.0 / float64(gap)
 			}
 		}
 	}
 	return scores
 }
 
-// periodikPattern cek apakah ada siklus periodik (tiap N putaran keluar)
 func periodikPattern(entries []rawEntry, targetSesi int) map[string]float64 {
 	sesiOnly := []string{}
 	for _, e := range entries {
@@ -522,24 +564,19 @@ func periodikPattern(entries []rawEntry, targetSesi int) map[string]float64 {
 			sesiOnly = append(sesiOnly, e.nomor[2:4])
 		}
 	}
-
 	scores := map[string]float64{}
 	n := len(sesiOnly)
 	if n < 6 {
 		return scores
 	}
-
-	// Cek pola siklus 3, 4, 5, 6, 7 putaran
 	for _, period := range []int{3, 4, 5, 6, 7} {
 		if n < period*2 {
 			continue
 		}
 		for i := period; i < n; i++ {
 			if sesiOnly[i] == sesiOnly[i-period] {
-				// Pola ditemukan — hitung jarak dari sekarang
 				distFromEnd := n - 1 - i
 				if distFromEnd < period {
-					// Kandidat kuat: tepat di ujung siklus
 					bonus := math.Max(0, float64(period-distFromEnd)) / float64(period)
 					scores[sesiOnly[i]] += bonus * 2.0
 				}
@@ -549,16 +586,13 @@ func periodikPattern(entries []rawEntry, targetSesi int) map[string]float64 {
 	return scores
 }
 
-// analyzeD2Enhanced: analisa D2 lengkap dengan semua teknik
 func analyzeD2Enhanced(targetSesi int) []D2Stat {
 	now := nowWIB()
 	allEntries := getAllResults()
-
 	if len(allEntries) == 0 {
 		return nil
 	}
 
-	// ── 1. Frekuensi dasar (semua sesi + sesi spesifik) dengan decay waktu ──
 	type stat struct {
 		allFreq     float64
 		sesiFreq    float64
@@ -567,14 +601,12 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
 		markov      float64
 	}
 	stats := map[string]*stat{}
-
 	ensure := func(d2 string) {
 		if stats[d2] == nil {
 			stats[d2] = &stat{lastIdx: 9999, lastSesiIdx: 9999}
 		}
 	}
 
-	// Indeks semua entri untuk lastSeen
 	allD2Sequence := []string{}
 	for _, e := range allEntries {
 		if len(e.nomor) >= 4 {
@@ -582,14 +614,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
 		}
 	}
 
-	sesiSequence := []string{}
-	for _, e := range allEntries {
-		if e.sesi == targetSesi && len(e.nomor) >= 4 {
-			sesiSequence = append(sesiSequence, e.nomor[2:4])
-		}
-	}
-
-	// Frekuensi semua sesi (bobot berdasarkan usia data)
+	// Frekuensi semua sesi dengan decay eksponensial
 	for i, e := range allEntries {
 		if len(e.nomor) < 4 {
 			continue
@@ -597,14 +622,10 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
 		d2 := e.nomor[2:4]
 		ensure(d2)
 		t, err := time.Parse("2006-01-02", e.tanggal)
-		weight := 1.0
+		weight := 0.3
 		if err == nil {
 			age := now.Sub(t).Hours() / 24
-			// Bobot eksponensial: data baru jauh lebih penting
-			weight = math.Exp(-age / 30.0) * 3.0
-			if weight < 0.3 {
-				weight = 0.3
-			}
+			weight = math.Exp(-age/30.0)*3.0 + 0.3
 		}
 		stats[d2].allFreq += weight
 		if stats[d2].lastIdx == 9999 {
@@ -626,7 +647,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
 		d2 := e.nomor[2:4]
 		ensure(d2)
 		t, err := time.Parse("2006-01-02", e.tanggal)
-		weight := 1.0
+		weight := 0.5
 		if err == nil {
 			age := now.Sub(t).Hours() / 24
 			weight = math.Exp(-age/20.0)*4.0 + 0.5
@@ -637,9 +658,8 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
 		}
 	}
 
-	// ── 2. Markov Chain: transisi umum ──
+	// Markov Chain umum
 	markovGen := markovTransition(allEntries)
-	// Ambil D2 terakhir yang keluar
 	lastD2 := ""
 	if len(allD2Sequence) > 0 {
 		lastD2 = allD2Sequence[len(allD2Sequence)-1]
@@ -653,51 +673,40 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
 		}
 	}
 
-	// ── 3. Markov sesi: transisi sesi sebelumnya → sesi target ──
+	// Markov transisi sesi N-1 → sesi N
 	prevSesi := targetSesi - 1
 	if prevSesi < 1 {
 		prevSesi = 6
 	}
-	sesiTransProb := markovSesiTransition(allEntries, prevSesi, targetSesi)
-	for d2, prob := range sesiTransProb {
+	for d2, prob := range markovSesiTransition(allEntries, prevSesi, targetSesi) {
 		ensure(d2)
 		stats[d2].markov += prob * 6.0
 	}
 
-	// ── 4. Pola lintas sesi dalam sehari ──
-	crossProb := crossSesiPattern(allEntries, targetSesi)
-	for d2, score := range crossProb {
+	// Pola lintas sesi
+	for d2, score := range crossSesiPattern(allEntries, targetSesi) {
 		ensure(d2)
 		stats[d2].markov += score * 2.0
 	}
 
-	// ── 5. Pola periodik ──
-	periodProb := periodikPattern(allEntries, targetSesi)
-	for d2, score := range periodProb {
+	// Pola periodik
+	for d2, score := range periodikPattern(allEntries, targetSesi) {
 		ensure(d2)
 		stats[d2].markov += score * 3.0
 	}
 
-	// ── 6. Due number bonus ──
-	// D2 yang sudah lama tidak keluar di sesi ini mendapat bonus
-	_ = sesiSequence
-
-	// ── Gabungkan skor final ──
+	// Gabungkan skor
 	var list []D2Stat
 	for d2, s := range stats {
 		dueBonus := 0.0
 		if s.lastSesiIdx > 10 {
-			// Semakin lama tidak keluar, semakin besar bonus
 			dueBonus = math.Log(float64(s.lastSesiIdx)) * 1.5
 		}
-
 		score := s.sesiFreq*5.0 + s.allFreq*1.5 + s.markov + dueBonus
-
 		lastSeen := s.lastIdx
 		if s.lastSesiIdx < lastSeen {
 			lastSeen = s.lastSesiIdx
 		}
-
 		list = append(list, D2Stat{
 			D2:          d2,
 			AllFreq:     int(s.allFreq + 0.5),
@@ -707,7 +716,6 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
 			MarkovScore: s.markov,
 		})
 	}
-
 	sort.Slice(list, func(i, j int) bool {
 		if list[i].Score != list[j].Score {
 			return list[i].Score > list[j].Score
@@ -717,7 +725,6 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
 	return list
 }
 
-// analyzeFreqItems untuk halaman paito
 func analyzeFreqItems(limit int) []FreqItem {
 	rows, err := db.Query(
 		`SELECT nomor FROM results ORDER BY tanggal DESC, sesi DESC LIMIT ?`, limit)
@@ -733,10 +740,7 @@ func analyzeFreqItems(limit int) []FreqItem {
 			freq[n[2:4]]++
 		}
 	}
-	type kv struct {
-		k string
-		v int
-	}
+	type kv struct{ k string; v int }
 	var sorted []kv
 	for k, v := range freq {
 		sorted = append(sorted, kv{k, v})
@@ -784,16 +788,11 @@ func buildAlasan(stats []D2Stat, sesi int) string {
 		return "Belum cukup data historis"
 	}
 	top := stats[0]
-
 	var parts []string
-
-	// Top 2D info
 	parts = append(parts, fmt.Sprintf(
 		"Sesi %d: 2D terkuat %s (skor %.0f, sesi %dx, markov %.1f)",
 		sesi, top.D2, top.Score, top.SesiFreq, top.MarkovScore,
 	))
-
-	// Due numbers
 	var due []string
 	for _, s := range stats {
 		if s.LastSeen > 12 && s.SesiFreq >= 1 {
@@ -806,7 +805,6 @@ func buildAlasan(stats []D2Stat, sesi int) string {
 	if len(due) > 0 {
 		parts = append(parts, "Due: "+strings.Join(due, ", "))
 	}
-
 	return strings.Join(parts, ". ")
 }
 
@@ -863,11 +861,20 @@ func newFuncMap() template.FuncMap {
 			}
 			return "❌ MISS"
 		},
+		"pctClass": func(pct int) string {
+			if pct >= 50 {
+				return "wr-good"
+			}
+			if pct >= 30 {
+				return "wr-med"
+			}
+			return "wr-bad"
+		},
 	}
 }
 
 func loadTemplates() {
-	pages := []string{"index", "input", "paito", "predict"}
+	pages := []string{"index", "input", "paito", "predict", "stats"}
 	tmpls = make(map[string]*template.Template, len(pages))
 	for _, p := range pages {
 		t, err := template.New("").Funcs(newFuncMap()).ParseFiles(
@@ -925,22 +932,21 @@ func currentSesi() int {
 	}
 }
 
-// ── Handlers ──────────────────────────────────────────────────────────────────
+// ── Prediction helper ─────────────────────────────────────────────────────────
 
-func getCurrentPrediction(nextSesi int) *Prediction {
-	today := nowWIB().Format("2006-01-02")
-
+// getPredictionForDate ambil atau generate prediksi untuk tanggal+sesi tertentu
+func getPredictionForDate(date string, sesi int) *Prediction {
 	var digits string
 	db.QueryRow(
 		`SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL'`,
-		today, nextSesi).Scan(&digits)
+		date, sesi).Scan(&digits)
 
-	stats := analyzeD2Enhanced(nextSesi)
+	stats := analyzeD2Enhanced(sesi)
 
 	if len(digits) < 5 {
 		digits = buildBBFSFromStats(stats)
 		if len(digits) >= 5 {
-			savePrediction(today, nextSesi, digits, "AI-LOKAL")
+			savePrediction(date, sesi, digits, "AI-LOKAL")
 		}
 	}
 	if len(digits) < 5 {
@@ -957,26 +963,47 @@ func getCurrentPrediction(nextSesi int) *Prediction {
 		Top2D:    top10,
 		BBFS:     digits,
 		BBFSList: strings.Split(digits, ""),
-		Alasan:   buildAlasan(top10, nextSesi),
+		Alasan:   buildAlasan(top10, sesi),
 	}
 }
+
+// ── Handlers ──────────────────────────────────────────────────────────────────
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	sesi := currentSesi()
-	next := sesi%6 + 1
+
+	// Prediksi berdasarkan result terakhir di DB (bukan jam)
+	// Sehingga tidak kacau meski input terlambat
+	lastDate, lastSesi := getLastResultEntry()
+	nextDate, nextSesi := nextSessionAfter(lastDate, lastSesi)
+
+	var pred *Prediction
+	if lastDate != "" {
+		pred = getPredictionForDate(nextDate, nextSesi)
+	} else {
+		// Belum ada data, fallback ke jam WIB
+		clockSesi := currentSesi()
+		clockNext := clockSesi%6 + 1
+		nextSesi = clockNext
+		nextDate = nowWIB().Format("2006-01-02")
+		pred = getPredictionForDate(nextDate, nextSesi)
+	}
+
 	render(w, "index", PageData{
 		CurrentDate:       nowWIB().Format("2006-01-02"),
-		CurrentSesi:       sesi,
-		NextSesi:          next,
+		CurrentSesi:       currentSesi(),
+		NextSesi:          nextSesi,
+		NextPredDate:      nextDate,
+		LastResultDate:    lastDate,
+		LastResultSesi:    lastSesi,
 		Stats:             calcStats(),
 		Message:           r.URL.Query().Get("msg"),
 		Validations:       getBBFSValidations(10),
 		WR:                calcWinRate(),
-		CurrentPrediction: getCurrentPrediction(next),
+		CurrentPrediction: pred,
 	})
 }
 
@@ -1004,7 +1031,6 @@ func inputHandler(w http.ResponseWriter, r *http.Request) {
 
 	autopMsg := autoPredict(tanggal, sesi)
 	msg := fmt.Sprintf("Result %s (Sesi %d) tersimpan. %s", nomor, sesi, autopMsg)
-
 	http.Redirect(w, r, "/?msg="+strings.ReplaceAll(msg, " ", "+"), http.StatusSeeOther)
 }
 
@@ -1047,7 +1073,7 @@ func inputBatchHandler(w http.ResponseWriter, r *http.Request) {
 		autoPredict(lastTanggal, lastSesi)
 	}
 	http.Redirect(w, r,
-		fmt.Sprintf("/?msg=Batch+selesai:+%d+sukses,+%d+gagal.+Prediksi+otomatis+disimpan.", ok, fail),
+		fmt.Sprintf("/?msg=Batch+selesai:+%d+sukses,+%d+gagal.", ok, fail),
 		http.StatusSeeOther)
 }
 
@@ -1072,6 +1098,14 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
 	today := nowWIB().Format("2006-01-02")
 	sesi := currentSesi()
 	next := sesi%6 + 1
+
+	// Default ke sesi berikutnya setelah result terakhir
+	lastDate, lastSesi := getLastResultEntry()
+	if lastDate != "" {
+		nextDate, nextSesi := nextSessionAfter(lastDate, lastSesi)
+		today = nextDate
+		next = nextSesi
+	}
 
 	if r.Method == "GET" {
 		render(w, "predict", PageData{
@@ -1120,6 +1154,13 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
 	render(w, "predict", data)
 }
 
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	render(w, "stats", PageData{
+		SesiStats: calcSesiStats(),
+		WR:        calcWinRate(),
+	})
+}
+
 func apiResultsHandler(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
@@ -1138,7 +1179,6 @@ func seedPredictions() {
 		return
 	}
 	log.Println("Seeding prediksi historis...")
-
 	rows, err := db.Query(
 		`SELECT tanggal, sesi FROM results ORDER BY tanggal ASC, sesi ASC`)
 	if err != nil {
@@ -1187,6 +1227,7 @@ func main() {
 	mux.HandleFunc("/input-batch", inputBatchHandler)
 	mux.HandleFunc("/paito", paitoHandler)
 	mux.HandleFunc("/predict", predictHandler)
+	mux.HandleFunc("/stats", statsHandler)
 	mux.HandleFunc("/api/results", apiResultsHandler)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 

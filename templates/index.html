@@ -4,25 +4,42 @@
 <div class="alert alert-success">✅ {{.Message}}</div>
 {{end}}
 
-{{/* ── Info Bar (2 kartu saja) ── */}}
-<div class="info-bar info-bar-2">
+{{/* ── Info Bar ── */}}
+<div class="info-bar info-bar-4">
   <div class="info-card">
-    <div class="info-label">Tanggal</div>
-    <div class="info-val">{{.CurrentDate | formatDate}}</div>
+    <div class="info-label">Tanggal WIB</div>
+    <div class="info-val" id="liveTanggal">{{.CurrentDate | formatDate}}</div>
   </div>
   <div class="info-card">
-    <div class="info-label">Sesi Sekarang</div>
-    <div class="info-val"><span class="badge badge-blue">Sesi {{.CurrentSesi}}</span></div>
+    <div class="info-label">Jam WIB</div>
+    <div class="info-val mono" id="liveJam">--:--</div>
+  </div>
+  <div class="info-card">
+    <div class="info-label">Sesi Clock</div>
+    <div class="info-val"><span class="badge badge-blue" id="liveSesi">Sesi {{.CurrentSesi}}</span></div>
+  </div>
+  <div class="info-card">
+    <div class="info-label">Result Terakhir</div>
+    <div class="info-val">
+      {{if .LastResultDate}}
+      <span class="badge badge-green">{{.LastResultDate | formatDate}} S{{.LastResultSesi}}</span>
+      {{else}}
+      <span class="muted" style="font-size:.8rem">Belum ada</span>
+      {{end}}
+    </div>
   </div>
 </div>
 
-{{/* ── Prediksi Sesi Berikutnya ── */}}
+{{/* ── Prediksi Sesi Berikutnya (berbasis DB, bukan jam) ── */}}
 {{if .CurrentPrediction}}
 <div class="card pred-dashboard">
   <div class="pred-dash-header">
     <span class="pred-dash-title">🤖 Prediksi AI — Sesi {{.NextSesi}}</span>
     <span class="badge badge-AILOKAL">AI-LOKAL</span>
   </div>
+  {{if .NextPredDate}}
+  <div class="pred-dash-sub">📅 {{.NextPredDate | formatDate}} · Sesi {{.NextSesi}}</div>
+  {{end}}
 
   <div class="bbfs-showcase">
     <div class="bbfs-label">BBFS 5 Digit</div>
@@ -45,10 +62,15 @@
   {{end}}
 
   <a href="/predict" class="btn btn-primary btn-block" style="margin-top:1rem">
-    🔮 Prediksi Lebih Detail
+    🔮 Prediksi Detail / Generate Ulang
   </a>
 </div>
 {{end}}
+
+{{/* ── Info: input terlambat oke ── */}}
+<div class="late-input-info">
+  💡 <strong>Input terlambat?</strong> Tidak masalah — prediksi selalu dihitung dari result terakhir yang diinput, bukan dari jam sekarang.
+</div>
 
 {{/* ── Win Rate ── */}}
 {{if gt .WR.Total 0}}
@@ -74,12 +96,12 @@
 {{/* ── Quick Actions ── */}}
 <div class="action-grid">
   <a href="/predict" class="action-btn primary">🤖 Prediksi AI</a>
-  <a href="/input" class="action-btn">📋 Result</a>
+  <a href="/input" class="action-btn">📋 Input Result</a>
   <a href="/paito" class="action-btn">📈 Paito</a>
-  <a href="/paito?days=60" class="action-btn">📊 60 Hari</a>
+  <a href="/stats" class="action-btn">📊 Statistik</a>
 </div>
 
-{{/* ── Validasi BBFS (simpel) ── */}}
+{{/* ── Validasi BBFS ── */}}
 {{if .Validations}}
 <div class="card">
   <div class="card-title">📋 Riwayat BBFS</div>
@@ -104,4 +126,26 @@
 </div>
 {{end}}
 
+<script>
+// Live WIB clock — update setiap detik tanpa reload halaman
+function getSesiWIB(h) {
+  if (h >= 13 && h < 16) return 1;
+  if (h >= 16 && h < 19) return 2;
+  if (h >= 19 && h < 21) return 3;
+  if (h >= 21 && h < 23) return 4;
+  if (h >= 23) return 5;
+  return 6;
+}
+function updateClock() {
+  var now = new Date();
+  var wibMs = now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000;
+  var wib = new Date(wibMs);
+  var h = wib.getHours(), m = wib.getMinutes(), s = wib.getSeconds();
+  var pad = function(n){ return n < 10 ? '0'+n : ''+n; };
+  document.getElementById('liveJam').textContent = pad(h)+':'+pad(m)+':'+pad(s);
+  document.getElementById('liveSesi').textContent = 'Sesi ' + getSesiWIB(h);
+}
+updateClock();
+setInterval(updateClock, 1000);
+</script>
 {{end}}

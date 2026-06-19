@@ -279,3 +279,38 @@ footer{text-align:center;color:#4a5568;font-size:.75rem;padding:1.5rem .9rem;bor
   .d2-meta{display:none}
   .bbfs-digit{width:1.5rem;height:1.5rem;font-size:.72rem}
 }
+
+/* ── Info Bar 4 kolom ── */
+.info-bar-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:600px){.info-bar-4{grid-template-columns:repeat(2,1fr)}}
+
+/* ── Dashboard: sub label prediksi ── */
+.pred-dash-sub{font-size:.75rem;color:#718096;margin:-0.5rem 0 .75rem}
+
+/* ── Late input info ── */
+.late-input-info{background:#1a2744;border:1px solid #2b4a8a;border-radius:.6rem;padding:.65rem .9rem;font-size:.8rem;color:#90cdf4;margin-bottom:1rem;line-height:1.5}
+.late-input-info strong{color:#63b3ed}
+
+/* ── Statistik per Sesi ── */
+.sesi-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1rem}
+@media(max-width:600px){.sesi-stats-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:380px){.sesi-stats-grid{grid-template-columns:1fr}}
+.sesi-stat-card{background:#1a202c;border:1px solid #2d3748;border-radius:.7rem;padding:.85rem;border-left:3px solid #4a5568}
+.sesi-stat-card.sesi-good{border-left-color:#48bb78}
+.sesi-stat-card.sesi-med{border-left-color:#f6ad55}
+.sesi-stat-card.sesi-bad{border-left-color:#fc8181}
+.sesi-stat-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
+.sesi-num{font-weight:700;font-size:.9rem;color:#e2e8f0}
+.sesi-pct{font-size:1.2rem;font-weight:800;font-family:monospace}
+.sesi-stat-bar{height:.45rem;background:#2d3748;border-radius:.25rem;overflow:hidden;margin-bottom:.45rem}
+.sesi-bar-fill{height:100%;border-radius:.25rem;transition:width .4s}
+.sesi-stat-detail{font-size:.72rem;display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.5rem}
+.sesi-stat-bbfs{margin-top:.45rem;padding-top:.45rem;border-top:1px solid #2d3748;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.sesi-bbfs-label{font-size:.68rem;color:#718096;text-transform:uppercase;letter-spacing:.4px}
+.wr-med{color:#f6ad55}
+
+/* ── Jadwal Sesi ── */
+.sesi-schedule{display:flex;flex-direction:column;gap:.4rem}
+.sched-row{display:flex;justify-content:space-between;align-items:center;padding:.45rem .6rem;background:#2d3748;border-radius:.45rem;font-size:.85rem}
+.sched-sesi{font-weight:700;color:#90cdf4}
+.sched-jam{color:#a0aec0;font-family:monospace;font-size:.82rem}
