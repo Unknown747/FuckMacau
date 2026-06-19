@@ -314,3 +314,13 @@ footer{text-align:center;color:#4a5568;font-size:.75rem;padding:1.5rem .9rem;bor
 .sched-row{display:flex;justify-content:space-between;align-items:center;padding:.45rem .6rem;background:#2d3748;border-radius:.45rem;font-size:.85rem}
 .sched-sesi{font-weight:700;color:#90cdf4}
 .sched-jam{color:#a0aec0;font-family:monospace;font-size:.82rem}
+
+/* ── Predict Fixed Header ── */
+.pred-fixed-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem}
+.pred-fixed-label{font-weight:700;font-size:.95rem;color:#e2e8f0}
+
+/* ── Sesi Quick Links ── */
+.sesi-quick-links{display:flex;gap:.4rem;flex-wrap:wrap}
+.sesi-link{padding:.4rem .75rem;border-radius:.4rem;background:#2d3748;color:#a0aec0;font-size:.82rem;font-weight:600;border:1px solid #4a5568;transition:background .15s;text-decoration:none}
+.sesi-link:hover{background:#4a5568;color:#fff;text-decoration:none}
+.sesi-link.active{background:#b7791f;color:#fefcbf;border-color:#b7791f}

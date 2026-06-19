@@ -1247,83 +1247,63 @@ func paitoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func predictHandler(w http.ResponseWriter, r *http.Request) {
-        today := nowWIB().Format("2006-01-02")
-        sesi := currentSesi()
-        next := sesi%6 + 1
-
-        // Default ke sesi berikutnya setelah result terakhir
+        // Prediksi selalu otomatis — tidak ada POST/generate manual
+        // Ambil sesi berikutnya berdasarkan result terakhir di DB
         lastDate, lastSesi := getLastResultEntry()
+        today := nowWIB().Format("2006-01-02")
+        next := currentSesi()%6 + 1
+
         if lastDate != "" {
-                nextDate, nextSesi := nextSessionAfter(lastDate, lastSesi)
-                today = nextDate
-                next = nextSesi
+                var d string
+                var s int
+                d, s = nextSessionAfter(lastDate, lastSesi)
+                today = d
+                next = s
         }
 
-        if r.Method == "GET" {
-                render(w, "predict", PageData{
-                        CurrentDate: today,
-                        NextSesi:    next,
-                })
-                return
+        // Override jika ada query param ?tanggal=&sesi= (untuk lihat sesi lain, read-only)
+        if qt := r.URL.Query().Get("tanggal"); qt != "" {
+                today = qt
         }
-
-        tanggal := r.FormValue("tanggal")
-        if tanggal == "" {
-                tanggal = today
-        }
-        sesiTarget, _ := strconv.Atoi(r.FormValue("sesi"))
-        if sesiTarget < 1 || sesiTarget > 6 {
-                sesiTarget = next
-        }
-
-        // Cek apakah result sudah ada untuk sesi ini
-        var existingResult string
-        db.QueryRow(`SELECT nomor FROM results WHERE tanggal=? AND sesi=?`,
-                tanggal, sesiTarget).Scan(&existingResult)
-
-        // Cek apakah prediksi sudah tersimpan sebelumnya
-        var storedBBFS string
-        db.QueryRow(`SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL'`,
-                tanggal, sesiTarget).Scan(&storedBBFS)
-
-        var bbfs string
-        var lockedMsg string
-
-        if existingResult != "" && storedBBFS != "" {
-                // Result sudah ada → tampilkan prediksi ASLI (yang disimpan sebelum result masuk)
-                // TIDAK recalculate agar akurasi bisa diukur dengan jujur
-                bbfs = storedBBFS
-                lockedMsg = fmt.Sprintf("⚠️ Result %s sudah ada — menampilkan prediksi ASLI (tidak diubah)", existingResult)
-        } else {
-                // Result belum ada → generate & simpan prediksi baru
-                paitoStats := analyzeD2Enhanced(sesiTarget)
-                bbfs = buildBBFSFromStats(paitoStats)
-                if len(bbfs) >= 5 {
-                        savePrediction(tanggal, sesiTarget, bbfs, "AI-LOKAL")
+        if qs := r.URL.Query().Get("sesi"); qs != "" {
+                if sv, err := strconv.Atoi(qs); err == nil && sv >= 1 && sv <= 6 {
+                        next = sv
                 }
         }
 
-        paitoStats := analyzeD2Enhanced(sesiTarget)
+        pred := getPredictionForDate(today, next)
+
+        paitoStats := analyzeD2Enhanced(next)
         top10 := paitoStats
         if len(top10) > 10 {
                 top10 = top10[:10]
         }
 
-        pred := Prediction{
-                Metode: "AI-LOKAL",
-                Top2D:  top10,
-                BBFS:   bbfs,
-                Alasan: buildAlasan(top10, sesiTarget),
-        }
-        if len(bbfs) >= 5 {
-                pred.BBFSList = strings.Split(bbfs, "")
+        var bbfs string
+        if pred != nil {
+                bbfs = pred.BBFS
+                pred.Top2D = top10
+                pred.Alasan = buildAlasan(top10, next)
+        } else {
+                bbfs = buildBBFSFromStats(paitoStats)
+                if len(bbfs) >= 5 {
+                        savePrediction(today, next, bbfs, "AI-LOKAL")
+                        pred = &Prediction{
+                                Metode:   "AI-LOKAL",
+                                Top2D:    top10,
+                                BBFS:     bbfs,
+                                BBFSList: strings.Split(bbfs, ""),
+                                Alasan:   buildAlasan(top10, next),
+                        }
+                }
         }
 
         data := PageData{
-                CurrentDate: tanggal,
-                NextSesi:    sesiTarget,
-                Predictions: []Prediction{pred},
-                Message:     lockedMsg,
+                CurrentDate: today,
+                NextSesi:    next,
+        }
+        if pred != nil {
+                data.Predictions = []Prediction{*pred}
         }
         if len(bbfs) >= 5 {
                 data.BBFS = generateBBFS(bbfs)
