@@ -15,13 +15,13 @@
 
 {{/* ── BBFS Besar ── */}}
 {{if .BBFSList}}
-<div class="card pred-dashboard" style="text-align:center">
-  <div class="bbfs-label" style="margin-bottom:.65rem">🔢 BBFS 5 Digit</div>
-  <div class="bbfs-digits-row" style="justify-content:center">
-    {{range .BBFSList}}<span class="bbfs-digit-big">{{.}}</span>{{end}}
+<div class="card" style="background:linear-gradient(160deg,#0a1628,#0d1220);border-color:#1a3a5c;text-align:center;padding:1.25rem 1rem" id="bbfsCard">
+  <div style="font-size:.68rem;color:#637087;text-transform:uppercase;letter-spacing:.7px;margin-bottom:.6rem">🔢 BBFS 5 Digit</div>
+  <div class="bbfs-digits-row" style="justify-content:center;gap:.6rem">
+    {{range .BBFSList}}<span class="bbfs-digit-big" style="border-color:#2b6cb0;color:#90e0ff;text-shadow:0 0 14px #90e0ff55;cursor:pointer" onclick="playTone()">{{.}}</span>{{end}}
   </div>
-  <div style="margin-top:.75rem;font-size:.8rem;color:#718096">
-    Prediksi ini <strong style="color:#fbd38d">fix</strong> · dihitung otomatis saat result sebelumnya diinput
+  <div style="margin-top:.8rem;font-size:.77rem;color:#3d5880">
+    Tap digit untuk suara · Prediksi <strong style="color:#fbd38d">fix</strong> · dihitung otomatis saat result sebelumnya diinput
   </div>
 </div>
 {{end}}
@@ -35,17 +35,17 @@
     <div class="d2-item" style="border-color:{{colorOf .D2}}">
       <div class="d2-val" style="color:{{colorOf .D2}}">{{.D2}}</div>
       {{if .SesiFreq}}<div class="d2-meta">Sesi: {{.SesiFreq}}x</div>{{end}}
-      {{if gt .LastSeen 15}}<div class="d2-due">⏳ DUE</div>{{end}}
+      {{if gt .LastSeen 12}}<div class="d2-due">⏳ DUE</div>{{end}}
     </div>
     {{end}}
   </div>
-  {{if .Alasan}}<div class="pred-alasan" style="margin-top:.75rem">💡 {{.Alasan}}</div>{{end}}
+  {{if .Alasan}}<div class="pred-alasan">💡 {{.Alasan}}</div>{{end}}
 </div>
 {{end}}
 
 {{end}}
 
-{{/* ── Matriks Kombinasi ── */}}
+{{/* ── Kombinasi 2D ── */}}
 {{if .BBFS}}
 <div class="card">
   <div class="card-title">📋 20 Kombinasi 2D dari {{.BBFS.Digits}}</div>
@@ -77,17 +77,17 @@
 {{end}}
 
 {{else}}
-<div class="card" style="text-align:center;padding:2rem">
-  <div style="font-size:2rem;margin-bottom:.75rem">⏳</div>
-  <div style="font-weight:600;color:#e2e8f0;margin-bottom:.4rem">Belum ada prediksi</div>
-  <div style="font-size:.83rem;color:#718096">Input minimal 1 result agar AI bisa menghitung prediksi sesi berikutnya.</div>
-  <a href="/input" class="btn btn-primary" style="margin-top:1rem;display:inline-flex">➕ Input Result</a>
+<div class="card" style="text-align:center;padding:2.5rem 1rem">
+  <div style="font-size:2.5rem;margin-bottom:.75rem">⏳</div>
+  <div style="font-weight:700;color:#e2e8f0;margin-bottom:.4rem;font-size:1rem">Belum ada prediksi</div>
+  <div style="font-size:.82rem;color:#637087;margin-bottom:1.25rem">Input minimal 1 result agar AI bisa menghitung prediksi sesi berikutnya.</div>
+  <a href="/input" class="btn btn-primary" style="display:inline-flex">➕ Input Result</a>
 </div>
 {{end}}
 
 {{/* ── Lihat sesi lain ── */}}
 <div class="card" style="margin-top:.25rem">
-  <div class="card-title" style="margin-bottom:.65rem">🔎 Lihat Prediksi Sesi Lain</div>
+  <div class="card-title" style="margin-bottom:.6rem">🔎 Lihat Prediksi Sesi Lain</div>
   <div class="sesi-quick-links">
     {{range seq 6}}
     <a href="/predict?tanggal={{$.CurrentDate}}&sesi={{.}}"
@@ -102,26 +102,23 @@
   <a href="/stats" class="btn btn-secondary">📊 Statistik</a>
 </div>
 
-{{/* Suara saat BBFS ditampilkan */}}
-{{if .BBFS}}
 <script>
-(function(){
+function playTone() {
   try {
     var ctx = new (window.AudioContext || window.webkitAudioContext)();
-    var notes = [523, 659, 784, 1047];
+    var notes = [659, 784, 880, 1047];
     notes.forEach(function(freq, i) {
       var osc = ctx.createOscillator();
       var gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = freq; osc.type = 'sine';
-      var t = ctx.currentTime + i * 0.18;
+      var t = ctx.currentTime + i * 0.14;
       gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.25, t + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
-      osc.start(t); osc.stop(t + 0.6);
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+      osc.start(t); osc.stop(t + 0.5);
     });
   } catch(e) {}
-})();
+}
 </script>
-{{end}}
 {{end}}

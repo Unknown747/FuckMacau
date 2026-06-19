@@ -5,7 +5,7 @@
 {{end}}
 
 {{/* ── Info Bar ── */}}
-<div class="info-bar info-bar-4">
+<div class="info-bar info-bar-4" style="margin-top:.25rem">
   <div class="info-card">
     <div class="info-label">Tanggal WIB</div>
     <div class="info-val" id="liveTanggal">{{.CurrentDate | formatDate}}</div>
@@ -15,7 +15,7 @@
     <div class="info-val mono" id="liveJam">--:--</div>
   </div>
   <div class="info-card">
-    <div class="info-label">Sesi Clock</div>
+    <div class="info-label">Sesi Aktif</div>
     <div class="info-val"><span class="badge badge-blue" id="liveSesi">Sesi {{.CurrentSesi}}</span></div>
   </div>
   <div class="info-card">
@@ -30,7 +30,7 @@
   </div>
 </div>
 
-{{/* ── Prediksi Sesi Berikutnya (berbasis DB, bukan jam) ── */}}
+{{/* ── Prediksi Sesi Berikutnya ── */}}
 {{if .CurrentPrediction}}
 <div class="card pred-dashboard">
   <div class="pred-dash-header">
@@ -62,7 +62,7 @@
   {{end}}
 
   <a href="/predict" class="btn btn-primary btn-block" style="margin-top:1rem">
-    🔮 Prediksi Detail / Generate Ulang
+    🔮 Lihat Prediksi Detail
   </a>
 </div>
 {{end}}
@@ -77,7 +77,7 @@
 <div class="wr-bar">
   <div class="wr-item">
     <span class="wr-label">🎯 Win Rate BBFS</span>
-    <span class="wr-pct {{if ge .WR.Pct 50}}wr-good{{else}}wr-bad{{end}}">{{.WR.Pct}}%</span>
+    <span class="wr-pct {{if ge .WR.Pct 50}}wr-good{{else if ge .WR.Pct 30}}wr-med{{else}}wr-bad{{end}}">{{.WR.Pct}}%</span>
   </div>
   <div class="wr-detail">
     <span class="wr-hit">✅ {{.WR.Hits}} HIT</span>
@@ -101,16 +101,16 @@
   <a href="/stats" class="action-btn">📊 Statistik</a>
 </div>
 
-{{/* ── Validasi BBFS ── */}}
+{{/* ── Riwayat BBFS ── */}}
 {{if .Validations}}
 <div class="card">
-  <div class="card-title">📋 Riwayat BBFS</div>
+  <div class="card-title">📋 Riwayat BBFS (10 Terakhir)</div>
   <div class="val-simple-list">
     {{range .Validations}}
     <div class="val-simple-row {{hitClass .}}">
       <div class="val-simple-left">
-        <span class="val-simple-date">{{.Tanggal | formatDate}} S{{.Sesi}}</span>
-        <span class="val-simple-bbfs">BBFS: {{.Digits}}</span>
+        <span class="val-simple-date">{{.Tanggal | formatDate}} · Sesi {{.Sesi}}</span>
+        <span class="val-simple-bbfs">{{.Digits}}</span>
       </div>
       <div class="val-simple-right">
         {{if .HasResult}}
@@ -127,13 +127,13 @@
 {{end}}
 
 <script>
-// Live WIB clock — update setiap detik tanpa reload halaman
+// Live WIB clock — jadwal: S1=00:01, S2=13:00, S3=16:00, S4=19:00, S5=22:00, S6=23:00
 function getSesiWIB(h) {
-  if (h >= 13 && h < 16) return 1;
-  if (h >= 16 && h < 19) return 2;
-  if (h >= 19 && h < 21) return 3;
-  if (h >= 21 && h < 23) return 4;
-  if (h >= 23) return 5;
+  if (h >= 0  && h < 13) return 1;
+  if (h >= 13 && h < 16) return 2;
+  if (h >= 16 && h < 19) return 3;
+  if (h >= 19 && h < 22) return 4;
+  if (h >= 22 && h < 23) return 5;
   return 6;
 }
 function updateClock() {

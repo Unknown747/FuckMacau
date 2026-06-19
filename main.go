@@ -519,6 +519,13 @@ func markovSesiTransition(entries []rawEntry, fromSesi, toSesi int) map[string]f
                 if !(cur.sesi == fromSesi && nxt.sesi == toSesi) {
                         continue
                 }
+                // Validasi: harus hari sama (sesi dalam sehari) atau lintas tengah malam (S6→S1)
+                if cur.tanggal != nxt.tanggal {
+                        // S6→S1 lintas hari diperbolehkan
+                        if !(fromSesi == 6 && toSesi == 1) {
+                                continue
+                        }
+                }
                 if len(nxt.nomor) < 4 {
                         continue
                 }
@@ -624,8 +631,9 @@ func dueGapBonus(sesiOnly []string, d2 string) float64 {
                         return math.Min(math.Log(float64(gap+1))*3.0, 12.0)
                 }
         }
-        // Belum pernah muncul di sesi ini → due besar
-        return 8.0
+        // Belum pernah muncul di sesi ini — berikan bonus eksplorasi kecil saja
+        // (jangan terlalu tinggi agar tidak mengalahkan D2 yang memang sering muncul)
+        return 3.5
 }
 
 func analyzeD2Enhanced(targetSesi int) []D2Stat {
@@ -748,14 +756,22 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
         }
 
-        // Markov Chain umum (dengan bobot recency pada transisi)
+        // Markov Chain umum: gunakan D2 terakhir dari sesi sebelumnya (lebih relevan)
         markovGen := markovTransition(allEntries)
-        lastD2 := ""
-        if len(allD2Sequence) > 0 {
-                lastD2 = allD2Sequence[len(allD2Sequence)-1]
+        prevSesi := targetSesi - 1
+        if prevSesi < 1 {
+                prevSesi = 6
         }
-        if lastD2 != "" {
-                if nextProbs, ok := markovGen[lastD2]; ok {
+        // Cari result terakhir dari prevSesi (bukan global last)
+        lastPrevSesiD2 := ""
+        for i := len(allEntries) - 1; i >= 0; i-- {
+                if allEntries[i].sesi == prevSesi && len(allEntries[i].nomor) >= 4 {
+                        lastPrevSesiD2 = allEntries[i].nomor[2:4]
+                        break
+                }
+        }
+        if lastPrevSesiD2 != "" {
+                if nextProbs, ok := markovGen[lastPrevSesiD2]; ok {
                         for d2, prob := range nextProbs {
                                 ensure(d2)
                                 stats[d2].markov += prob * 6.0
@@ -763,11 +779,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
         }
 
-        // Markov transisi sesi N-1 → sesi N (bobot tinggi)
-        prevSesi := targetSesi - 1
-        if prevSesi < 1 {
-                prevSesi = 6
-        }
+        // Markov transisi sesi N-1 → sesi N (bobot tinggi, hanya sesi yang sama hari)
         for d2, prob := range markovSesiTransition(allEntries, prevSesi, targetSesi) {
                 ensure(d2)
                 stats[d2].markov += prob * 8.0
@@ -1208,6 +1220,10 @@ func inputBatchHandler(w http.ResponseWriter, r *http.Request) {
                 sesi, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
                 nomor := strings.TrimSpace(parts[2])
                 if len(nomor) != 4 || sesi < 1 || sesi > 6 {
+                        fail++
+                        continue
+                }
+                if _, terr := time.Parse("2006-01-02", tanggal); terr != nil {
                         fail++
                         continue
                 }
