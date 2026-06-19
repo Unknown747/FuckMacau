@@ -18,6 +18,13 @@ import (
         _ "github.com/mattn/go-sqlite3"
 )
 
+// WIB = UTC+7 (Waktu Indonesia Barat)
+var wib = time.FixedZone("WIB", 7*60*60)
+
+func nowWIB() time.Time {
+        return time.Now().In(wib)
+}
+
 // ── Models ────────────────────────────────────────────────────────────────────
 
 type Result struct {
@@ -402,7 +409,7 @@ type rawEntry struct {
 }
 
 func analyzeD2(targetSesi, allLimit, sesiLimit int) []D2Stat {
-        now := time.Now()
+        now := nowWIB()
 
         rows, err := db.Query(
                 `SELECT tanggal, sesi, nomor FROM results ORDER BY tanggal DESC, sesi DESC LIMIT ?`, allLimit)
@@ -641,7 +648,7 @@ type GeminiResponse struct {
 
 func callGemini(apiKey, prompt string) (string, error) {
         url := fmt.Sprintf(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=%s",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=%s",
                 apiKey)
         reqBody := GeminiRequest{
                 Contents: []GeminiContent{{Parts: []GeminiPart{{Text: prompt}}}},
@@ -864,7 +871,7 @@ func recovery(next http.Handler) http.Handler {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func currentSesi() int {
-        h := time.Now().Hour()
+        h := nowWIB().Hour()
         switch {
         case h >= 13 && h < 16:
                 return 1
@@ -885,7 +892,7 @@ func currentSesi() int {
 
 // getCurrentPrediction ambil atau generate prediksi BBFS untuk sesi target
 func getCurrentPrediction(nextSesi int) *Prediction {
-        today := time.Now().Format("2006-01-02")
+        today := nowWIB().Format("2006-01-02")
 
         // Cek apakah sudah ada prediksi hari ini untuk sesi ini
         var digits string
@@ -928,7 +935,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
         sesi := currentSesi()
         next := sesi%6 + 1
         render(w, "index", PageData{
-                CurrentDate:       time.Now().Format("2006-01-02"),
+                CurrentDate:       nowWIB().Format("2006-01-02"),
                 CurrentSesi:       sesi,
                 NextSesi:          next,
                 Stats:             calcStats(),
@@ -940,7 +947,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func inputHandler(w http.ResponseWriter, r *http.Request) {
-        today := time.Now().Format("2006-01-02")
+        today := nowWIB().Format("2006-01-02")
         if r.Method == "GET" {
                 render(w, "input", PageData{CurrentDate: today, Results: getResults(30)})
                 return
@@ -1030,7 +1037,7 @@ func paitoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func predictHandler(w http.ResponseWriter, r *http.Request) {
-        today := time.Now().Format("2006-01-02")
+        today := nowWIB().Format("2006-01-02")
         sesi := currentSesi()
         next := sesi%6 + 1
 
