@@ -1554,6 +1554,13 @@ func newFuncMap() template.FuncMap {
                 },
                 "join":    strings.Join,
                 "colorOf": d2Color,
+                "inBBFS": func(digits string, d2 string) bool {
+                        if len(d2) != 2 || len(digits) < 5 || d2[0] == d2[1] {
+                                return false
+                        }
+                        return strings.ContainsRune(digits, rune(d2[0])) &&
+                                strings.ContainsRune(digits, rune(d2[1]))
+                },
                 "formatDate": func(s string) string {
                         t, err := time.Parse("2006-01-02", s)
                         if err != nil {

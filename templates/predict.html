@@ -29,17 +29,27 @@
 {{/* ── Top 2D ── */}}
 {{if .Top2D}}
 <div class="card">
-  <div class="card-title">🎯 Top 2D — Sesi {{$.NextSesi}}</div>
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem">
+    <span>🎯 Top 2D — Sesi {{$.NextSesi}}</span>
+    {{if .BBFS}}<span style="font-size:.68rem;color:#637087;font-weight:400">🔢 <span style="color:#90e0ff">{{.BBFS.Digits}}</span> = BBFS aktif</span>{{end}}
+  </div>
   <div class="d2-grid">
     {{range .Top2D}}
-    <div class="d2-item" style="border-color:{{colorOf .D2}}">
+    {{$inBBFS := false}}
+    {{if $.BBFS}}{{$inBBFS = hasPair $.BBFS.Pairs2D .D2}}{{end}}
+    <div class="d2-item" style="border-color:{{colorOf .D2}}{{if $inBBFS}};box-shadow:0 0 0 1px #2b6cb055{{end}}">
       <div class="d2-val" style="color:{{colorOf .D2}}">{{.D2}}</div>
       {{if .SesiFreq}}<div class="d2-meta">Sesi: {{.SesiFreq}}x</div>{{end}}
-      {{if gt .LastSeen 12}}<div class="d2-due">⏳ DUE</div>{{end}}
+      {{if $inBBFS}}<div class="d2-due" style="background:#1a3a5c22;color:#90e0ff;border-color:#2b6cb044">✓ BBFS</div>
+      {{else if gt .LastSeen 12}}<div class="d2-due">⏳ DUE</div>{{end}}
     </div>
     {{end}}
   </div>
   {{if .Alasan}}<div class="pred-alasan">💡 {{.Alasan}}</div>{{end}}
+  <div style="margin-top:.65rem;font-size:.71rem;color:#4a5568;line-height:1.5;border-top:1px solid #1a2535;padding-top:.55rem">
+    <strong style="color:#637087">✓ BBFS</strong> = pasangan ini tercakup dalam 20 kombinasi BBFS &nbsp;·&nbsp;
+    BBFS memilih 5 digit dengan <em>total kontribusi skor tertinggi</em>, bukan sekadar 5 digit dari pasangan teratas
+  </div>
 </div>
 {{end}}
 
