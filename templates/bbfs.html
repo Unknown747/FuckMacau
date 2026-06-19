@@ -1,0 +1,93 @@
+{{template "base" .}}
+{{define "content"}}
+<div class="page-header">
+  <h1>🎯 BBFS Generator</h1>
+  <p class="subtitle">Best Bet Full Set — 5 digit menghasilkan 20 kombinasi 2D</p>
+</div>
+
+<div class="form-container">
+  <form method="POST" action="/bbfs">
+    <div class="form-group">
+      <label>🔢 Masukkan 5 Digit BBFS</label>
+      <input type="text" name="digits" value="{{.InputDigits}}"
+             placeholder="contoh: 12345"
+             class="form-input bbfs-input"
+             oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,9)">
+      <small class="hint">Masukkan 5 angka berbeda (0–9). Duplikat diabaikan otomatis.</small>
+    </div>
+    <button type="submit" class="btn btn-primary btn-large">⚡ Generate BBFS</button>
+  </form>
+</div>
+
+{{if .BBFS}}
+<section class="section bbfs-result">
+  <h2>✅ BBFS: <span class="bbfs-big">{{.BBFS.Digits}}</span></h2>
+
+  <div class="bbfs-digit-row">
+    {{range .BBFS.DigitList}}<span class="bbfs-d large">{{.}}</span>{{end}}
+  </div>
+
+  <div class="bbfs-stats">
+    <div class="bstat"><div class="bstat-n">{{.BBFS.TotalPairs}}</div><div class="bstat-l">Kombinasi 2D</div></div>
+    <div class="bstat"><div class="bstat-n">5</div><div class="bstat-l">Digit</div></div>
+    <div class="bstat"><div class="bstat-n">100%</div><div class="bstat-l">Cover 2D</div></div>
+  </div>
+
+  <h3 style="margin:1.5rem 0 .75rem">📋 Semua 20 Kombinasi 2D</h3>
+  <div class="chips">
+    {{range .BBFS.Pairs2D}}<span class="chip-2d large">{{.}}</span>{{end}}
+  </div>
+
+  <h3 style="margin:1.5rem 0 .75rem">📊 Matriks</h3>
+  <div class="matrix-wrap">
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th>×</th>
+          {{range .BBFS.DigitList}}<th>{{.}}</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{range $i, $d1 := .BBFS.DigitList}}
+        <tr>
+          <th>{{$d1}}</th>
+          {{range $j, $d2 := $.BBFS.DigitList}}
+          {{if eq $d1 $d2}}
+          <td class="mx-self">—</td>
+          {{else}}
+          <td class="mx-pair">{{$d1}}{{$d2}}</td>
+          {{end}}
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}
+
+{{if .BBFSHistory}}
+<section class="section">
+  <h2>📜 Riwayat BBFS</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>BBFS</th><th>Sumber</th><th>Waktu</th><th>Aksi</th></tr>
+      </thead>
+      <tbody>
+        {{range .BBFSHistory}}
+        <tr>
+          <td>
+            {{range .DigitList}}<span class="bbfs-d sm">{{.}}</span>{{end}}
+          </td>
+          <td><span class="badge badge-{{.Source}}">{{.Source}}</span></td>
+          <td class="muted">{{.CreatedAt}}</td>
+          <td><a href="/bbfs?digits={{.Digits}}" class="btn btn-sm btn-secondary">Expand</a></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}
+{{end}}

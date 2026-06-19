@@ -1,0 +1,60 @@
+{{template "base" .}}
+{{define "content"}}
+<div class="page-header">
+  <h1>🔍 Filter Gemini</h1>
+  <p class="subtitle">Masukkan beberapa kandidat BBFS — Gemini AI pilih yang terbaik untuk 6 sesi ke depan</p>
+</div>
+
+{{if .Error}}
+<div class="alert alert-error">❌ {{.Error}}</div>
+{{end}}
+
+<div class="form-container">
+  <form method="POST" action="/filter" id="filterForm">
+    <div class="form-group">
+      <label>🔑 Gemini API Key</label>
+      <input type="text" name="api_key" value="{{.GeminiKey}}"
+             placeholder="AIzaSy..." class="form-input">
+    </div>
+    <div class="form-group">
+      <label>📋 Kandidat BBFS (1 per baris)</label>
+      <textarea name="bbfs_list" rows="8" class="form-input batch-input"
+        placeholder="12345&#10;67890&#10;13579&#10;24680"></textarea>
+      <small class="hint">Masukkan kandidat BBFS 5 digit, satu per baris. Bisa dari hasil halaman Prediksi AI.</small>
+    </div>
+    <button type="submit" class="btn btn-primary btn-large" id="filterBtn">
+      🤖 Filter dengan Gemini AI
+    </button>
+  </form>
+</div>
+
+<div id="loadingBox" style="display:none" class="loading-box">
+  <div class="spinner"></div>
+  <p>Gemini AI sedang menganalisa kandidat BBFS...</p>
+</div>
+
+{{if .FilterResult}}
+<section class="section">
+  <h2>✅ Hasil Filter Gemini</h2>
+  <pre class="gemini-box">{{.FilterResult}}</pre>
+</section>
+{{end}}
+
+<section class="section">
+  <h2>ℹ️ Cara Kerja</h2>
+  <div class="steps">
+    <div class="step"><span class="step-n">1</span><span>Generate prediksi di halaman <strong>Prediksi AI</strong> — catat BBFS yang dihasilkan</span></div>
+    <div class="step"><span class="step-n">2</span><span>Kumpulkan beberapa kandidat BBFS (dari hari/sesi berbeda)</span></div>
+    <div class="step"><span class="step-n">3</span><span>Masukkan ke kolom di atas, klik Filter — Gemini pilih yang paling potensial</span></div>
+    <div class="step"><span class="step-n">4</span><span>Gunakan BBFS terpilih di <strong>BBFS Generator</strong> untuk lihat semua 20 kombinasi 2D-nya</span></div>
+  </div>
+</section>
+
+<script>
+document.getElementById('filterForm').addEventListener('submit', function() {
+  document.getElementById('filterBtn').disabled = true;
+  document.getElementById('filterBtn').textContent = '⏳ Memproses...';
+  document.getElementById('loadingBox').style.display = 'flex';
+});
+</script>
+{{end}}

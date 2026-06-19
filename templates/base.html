@@ -1,0 +1,28 @@
+{{define "base"}}<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎰 Toto Macau 4D Predictor</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="navbar">
+  <div class="nav-brand">🎰 Toto Macau 4D</div>
+  <div class="nav-links">
+    <a href="/">Dashboard</a>
+    <a href="/paito">Paito</a>
+    <a href="/input">Input Result</a>
+    <a href="/predict">Prediksi AI</a>
+    <a href="/bbfs">BBFS Generator</a>
+    <a href="/filter">Filter Gemini</a>
+  </div>
+</nav>
+<main class="container">
+{{block "content" .}}{{end}}
+</main>
+<footer>
+  <p>Toto Macau 4D Predictor &copy; 2026 · Untuk referensi dan edukasi saja</p>
+</footer>
+</body>
+</html>{{end}}

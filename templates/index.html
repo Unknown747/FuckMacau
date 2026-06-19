@@ -1,0 +1,69 @@
+{{template "base" .}}
+{{define "content"}}
+<div class="page-header">
+  <h1>🎰 Toto Macau 4D Predictor</h1>
+  <p class="subtitle">Prediksi 2D · Gemini AI + Paito · BBFS 5 Digit</p>
+</div>
+
+{{if .Message}}
+<div class="alert alert-success">✅ {{.Message}}</div>
+{{end}}
+
+<div class="info-bar">
+  <div class="info-card">
+    <span class="label">Tanggal</span>
+    <span class="value">{{.CurrentDate | formatDate}}</span>
+  </div>
+  <div class="info-card">
+    <span class="label">Sesi Sekarang</span>
+    <span class="value"><span class="badge badge-blue">Sesi {{.CurrentSesi}}</span></span>
+  </div>
+  <div class="info-card">
+    <span class="label">Prediksi Untuk</span>
+    <span class="value"><span class="badge badge-green">Sesi {{.NextSesi}}</span></span>
+  </div>
+  {{if .Stats}}
+  <div class="info-card">
+    <span class="label">Total Data</span>
+    <span class="value">{{.Stats.Total}} result</span>
+  </div>
+  {{end}}
+</div>
+
+<div class="action-bar">
+  <a href="/predict" class="btn btn-primary">🤖 Generate Prediksi AI</a>
+  <a href="/input" class="btn btn-secondary">➕ Input Result</a>
+  <a href="/paito" class="btn btn-secondary">📈 Paito Lengkap</a>
+  <a href="/bbfs" class="btn btn-secondary">🎯 BBFS Generator</a>
+</div>
+
+<section class="section">
+  <h2>📊 Paito Terbaru (14 Hari)</h2>
+  <div class="paito-wrap">
+    <table class="paito-table">
+      <thead>
+        <tr>
+          <th>Tanggal</th>
+          <th>Sesi 1</th><th>Sesi 2</th><th>Sesi 3</th>
+          <th>Sesi 4</th><th>Sesi 5</th><th>Sesi 6</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .PaitoRows}}
+        <tr>
+          <td class="date-cell">{{.Tanggal | formatDate}}</td>
+          {{range .Cells}}
+          <td class="paito-cell" style="border-top:3px solid {{.Color}}">
+            {{if ne .Nomor "----"}}
+            <div class="p-full">{{.Nomor}}</div>
+            <div class="p-2d" style="color:{{.Color}}">{{.D2}}</div>
+            {{else}}<div class="p-empty">—</div>{{end}}
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

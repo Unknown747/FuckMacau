@@ -1,0 +1,138 @@
+{{template "base" .}}
+{{define "content"}}
+<div class="page-header">
+  <h1>🤖 Prediksi AI — Toto Macau 4D</h1>
+  <p class="subtitle">Gemini AI + Analisa Paito · Fokus Prediksi 2D · BBFS 5 Digit</p>
+</div>
+
+{{if .Error}}
+<div class="alert alert-error">❌ {{.Error}}</div>
+{{end}}
+
+<div class="form-container">
+  <form method="POST" action="/predict" id="predictForm">
+    <div class="form-row">
+      <div class="form-group">
+        <label>📅 Tanggal Target</label>
+        <input type="date" name="tanggal" value="{{.CurrentDate}}" required class="form-input">
+      </div>
+      <div class="form-group">
+        <label>🎯 Sesi Target</label>
+        <select name="sesi" class="form-input">
+          {{range seq 6}}
+          <option value="{{.}}" {{if eq . $.NextSesi}}selected{{end}}>Sesi {{.}}</option>
+          {{end}}
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>🔑 Gemini API Key <span class="optional">(opsional — tanpa key pakai analisa paito saja)</span></label>
+      <input type="text" name="api_key" value="{{.GeminiKey}}"
+             placeholder="AIzaSy..." class="form-input">
+      <small class="hint">Gratis di <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></small>
+    </div>
+    <button type="submit" class="btn btn-primary btn-large" id="genBtn">
+      🤖 Generate Prediksi
+    </button>
+  </form>
+</div>
+
+<div id="loadingBox" style="display:none" class="loading-box">
+  <div class="spinner"></div>
+  <p>Menganalisa data dan menghubungi Gemini AI...</p>
+</div>
+
+{{if .Predictions}}
+<section class="section">
+  <h2>🔮 Hasil Prediksi — {{.CurrentDate | formatDate}} Sesi {{.NextSesi}}</h2>
+  <div class="pred-grid">
+    {{range .Predictions}}
+    <div class="pred-card pred-{{.Metode}}">
+      <div class="pred-head">
+        <span class="metode-tag {{.Metode}}">{{.Metode}}</span>
+      </div>
+      {{if .Top2D}}
+      <div class="pred-section">
+        <div class="pred-label">🎯 TOP 2D</div>
+        <div class="chips">
+          {{range .Top2D}}<span class="chip-2d">{{.}}</span>{{end}}
+        </div>
+      </div>
+      {{end}}
+      {{if .BBFS}}
+      <div class="pred-section">
+        <div class="pred-label">🔢 BBFS</div>
+        <div class="bbfs-inline">
+          {{range .BBFS}}<span class="bbfs-d">{{string .}}</span>{{end}}
+        </div>
+      </div>
+      {{end}}
+      {{if .Alasan}}
+      <div class="pred-alasan">💡 {{.Alasan}}</div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</section>
+{{end}}
+
+{{if .BBFS}}
+<section class="section bbfs-result">
+  <h2>🎯 BBFS Terpilih: <span class="bbfs-big">{{.BBFS.Digits}}</span></h2>
+  <p class="bbfs-info">{{.BBFS.TotalPairs}} kombinasi 2D dari digit <strong>{{range .BBFS.DigitList}}<span class="bbfs-d">{{.}}</span>{{end}}</strong></p>
+
+  <div class="section-sub">
+    <h3>📋 Semua Kombinasi 2D (Fokus Pasang Ini)</h3>
+    <div class="chips">
+      {{range .BBFS.Pairs2D}}<span class="chip-2d large">{{.}}</span>{{end}}
+    </div>
+  </div>
+
+  <div class="section-sub">
+    <h3>📊 Matriks BBFS</h3>
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th>×</th>
+          {{range .BBFS.DigitList}}<th>{{.}}</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{range $i, $d1 := .BBFS.DigitList}}
+        <tr>
+          <th>{{$d1}}</th>
+          {{range $j, $d2 := $.BBFS.DigitList}}
+          {{if eq $d1 $d2}}
+          <td class="mx-self">—</td>
+          {{else}}
+          <td class="mx-pair">{{$d1}}{{$d2}}</td>
+          {{end}}
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bbfs-actions">
+    <a href="/bbfs?digits={{.BBFS.Digits}}" class="btn btn-secondary">🔍 Lihat di BBFS Generator</a>
+    <a href="/filter" class="btn btn-secondary">🔍 Filter dengan Gemini</a>
+  </div>
+</section>
+{{end}}
+
+{{if .GeminiResp}}
+<section class="section">
+  <h2>💬 Respons Lengkap Gemini AI</h2>
+  <pre class="gemini-box">{{.GeminiResp}}</pre>
+</section>
+{{end}}
+
+<script>
+document.getElementById('predictForm').addEventListener('submit', function() {
+  document.getElementById('genBtn').disabled = true;
+  document.getElementById('genBtn').textContent = '⏳ Memproses...';
+  document.getElementById('loadingBox').style.display = 'flex';
+});
+</script>
+{{end}}

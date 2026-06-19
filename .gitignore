@@ -1,0 +1,9 @@
+# Go build
+toto-macau
+*.exe
+*.test
+
+# DB backup
+*.db-journal
+*.db-wal
+*.db-shm
