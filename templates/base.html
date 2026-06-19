@@ -3,26 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎰 Toto Macau 4D Predictor</title>
+<title>🎰 Toto Macau 4D</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <nav class="navbar">
   <div class="nav-brand">🎰 Toto Macau 4D</div>
-  <div class="nav-links">
-    <a href="/">Dashboard</a>
-    <a href="/paito">Paito</a>
-    <a href="/input">Input Result</a>
-    <a href="/predict">Prediksi AI</a>
-    <a href="/bbfs">BBFS Generator</a>
-    <a href="/filter">Filter Gemini</a>
+  <button class="nav-toggle" onclick="toggleNav()" aria-label="Menu">☰</button>
+  <div class="nav-links" id="navLinks">
+    <a href="/" onclick="closeNav()">Dashboard</a>
+    <a href="/paito" onclick="closeNav()">Paito</a>
+    <a href="/input" onclick="closeNav()">Input Result</a>
+    <a href="/predict" onclick="closeNav()">Prediksi AI</a>
+    <a href="/bbfs" onclick="closeNav()">BBFS</a>
+    <a href="/filter" onclick="closeNav()">Filter</a>
   </div>
 </nav>
 <main class="container">
 {{block "content" .}}{{end}}
 </main>
 <footer>
-  <p>Toto Macau 4D Predictor &copy; 2026 · Untuk referensi dan edukasi saja</p>
+  <p>Toto Macau 4D Predictor · Untuk referensi saja</p>
 </footer>
+<script>
+function toggleNav() {
+  document.getElementById('navLinks').classList.toggle('open');
+}
+function closeNav() {
+  document.getElementById('navLinks').classList.remove('open');
+}
+// Highlight active link
+(function(){
+  var p = location.pathname;
+  document.querySelectorAll('.nav-links a').forEach(function(a){
+    var h = a.getAttribute('href');
+    if(h === p || (h !== '/' && p.startsWith(h))){
+      a.classList.add('active');
+    }
+  });
+})();
+</script>
 </body>
 </html>{{end}}

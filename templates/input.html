@@ -1,18 +1,14 @@
 {{template "base" .}}
 {{define "content"}}
 <div class="page-header">
-  <h1>➕ Input Result Toto Macau</h1>
-  <p class="subtitle">Masukkan hasil result 4D secara manual</p>
+  <h1>➕ Input Result</h1>
+  <p class="subtitle">Masukkan hasil 4D secara manual</p>
 </div>
 
-{{if .Error}}
-<div class="alert alert-error">❌ {{.Error}}</div>
-{{end}}
-{{if .Message}}
-<div class="alert alert-success">✅ {{.Message}}</div>
-{{end}}
+{{if .Error}}<div class="alert alert-error">❌ {{.Error}}</div>{{end}}
+{{if .Message}}<div class="alert alert-success">✅ {{.Message}}</div>{{end}}
 
-<div class="form-container">
+<div class="card">
   <form method="POST" action="/input">
     <div class="form-row">
       <div class="form-group">
@@ -22,12 +18,12 @@
       <div class="form-group">
         <label>🎯 Sesi</label>
         <select name="sesi" required class="form-input">
-          <option value="1">Sesi 1 (13:00)</option>
-          <option value="2">Sesi 2 (16:00)</option>
-          <option value="3">Sesi 3 (19:00)</option>
-          <option value="4">Sesi 4 (21:00)</option>
-          <option value="5">Sesi 5 (23:00)</option>
-          <option value="6">Sesi 6 (01:00+1)</option>
+          <option value="1">Sesi 1 — 13:00</option>
+          <option value="2">Sesi 2 — 16:00</option>
+          <option value="3">Sesi 3 — 19:00</option>
+          <option value="4">Sesi 4 — 21:00</option>
+          <option value="5">Sesi 5 — 23:00</option>
+          <option value="6">Sesi 6 — 01:00</option>
         </select>
       </div>
       <div class="form-group">
@@ -35,66 +31,61 @@
         <input type="text" name="nomor" placeholder="contoh: 1234"
                maxlength="4" pattern="[0-9]{4}" required
                class="form-input nomor-input"
+               inputmode="numeric"
                oninput="this.value=this.value.replace(/[^0-9]/g,'')">
       </div>
     </div>
-    <button type="submit" class="btn btn-primary btn-large">💾 Simpan Result</button>
+    <button type="submit" class="btn btn-primary btn-block">💾 Simpan Result</button>
   </form>
 </div>
 
-<div class="form-container" style="margin-top:1.5rem">
-  <h2 style="margin-bottom:1rem">📋 Input Batch</h2>
+<div class="card">
+  <div class="card-title">📋 Input Batch</div>
   <p class="hint" style="margin-bottom:.75rem">Format tiap baris: <code>YYYY-MM-DD,sesi,nomor4D</code></p>
   <form method="POST" action="/input-batch">
-    <textarea name="batch" rows="7" class="form-input batch-input"
-      placeholder="2026-06-19,1,1234&#10;2026-06-19,2,5678&#10;2026-06-19,3,9012"></textarea>
+    <textarea name="batch" rows="6" class="form-input mono"
+      placeholder="2026-06-19,1,1234&#10;2026-06-19,2,5678"></textarea>
     <button type="submit" class="btn btn-secondary" style="margin-top:.75rem">📥 Import Batch</button>
   </form>
 </div>
 
-<section class="section" style="margin-top:2rem">
-  <h2>📜 Riwayat Result Terakhir</h2>
-  <div class="table-wrap">
-    <table class="data-table" id="resultTable">
+<div class="card">
+  <div class="card-title">📜 Riwayat Result Terakhir</div>
+  <div class="table-scroll">
+    <table class="data-tbl" id="resultTable">
       <thead>
-        <tr><th>#</th><th>Tanggal</th><th>Sesi</th><th>Nomor</th><th>2D</th><th>Hapus</th></tr>
+        <tr><th>#</th><th>Tanggal</th><th>Sesi</th><th>4D</th><th>2D</th></tr>
       </thead>
       <tbody id="resultBody">
-        <tr><td colspan="6" class="loading-cell">Memuat data...</td></tr>
+        <tr><td colspan="5" class="td-center muted">Memuat...</td></tr>
       </tbody>
     </table>
   </div>
-</section>
+</div>
 
 <script>
-fetch('/api/results?limit=30')
+fetch('/api/results?limit=40')
   .then(r => r.json())
-  .then(data => {
-    const tbody = document.getElementById('resultBody');
-    if (!data || data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">Belum ada data</td></tr>';
+  .then(function(data) {
+    var tbody = document.getElementById('resultBody');
+    if (!data || !data.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="td-center muted">Belum ada data</td></tr>';
       return;
     }
-    tbody.innerHTML = data.map((r, i) => {
-      const d2 = r.Nomor && r.Nomor.length >= 4 ? r.Nomor.slice(2) : '--';
-      return `<tr>
-        <td class="muted">${i+1}</td>
-        <td>${r.Tanggal}</td>
-        <td><span class="badge badge-blue">Sesi ${r.Sesi}</span></td>
-        <td><strong class="nomor-big">${r.Nomor}</strong></td>
-        <td><span class="badge badge-green">${d2}</span></td>
-        <td>
-          <form method="POST" action="/delete-result" onsubmit="return confirm('Hapus result ini?')" style="display:inline">
-            <input type="hidden" name="id" value="${r.ID}">
-            <button type="submit" class="btn-del">✕</button>
-          </form>
-        </td>
-      </tr>`;
+    tbody.innerHTML = data.map(function(r, i) {
+      var d2 = r.Nomor && r.Nomor.length >= 4 ? r.Nomor.slice(2) : '--';
+      return '<tr>' +
+        '<td class="muted">' + (i+1) + '</td>' +
+        '<td>' + r.Tanggal + '</td>' +
+        '<td><span class="badge badge-blue">S' + r.Sesi + '</span></td>' +
+        '<td><strong class="num4d">' + r.Nomor + '</strong></td>' +
+        '<td><span class="badge badge-green">' + d2 + '</span></td>' +
+        '</tr>';
     }).join('');
   })
-  .catch(() => {
+  .catch(function() {
     document.getElementById('resultBody').innerHTML =
-      '<tr><td colspan="6" class="empty-cell">Gagal memuat data</td></tr>';
+      '<tr><td colspan="5" class="td-center muted">Gagal memuat</td></tr>';
   });
 </script>
 {{end}}

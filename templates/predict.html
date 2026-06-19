@@ -1,19 +1,19 @@
 {{template "base" .}}
 {{define "content"}}
 <div class="page-header">
-  <h1>🤖 Prediksi AI — Toto Macau 4D</h1>
-  <p class="subtitle">Gemini AI + Analisa Paito · Fokus Prediksi 2D · BBFS 5 Digit</p>
+  <h1>🤖 Prediksi AI</h1>
+  <p class="subtitle">Analisa Paito + Gemini AI · Fokus 2D · BBFS 5 Digit</p>
 </div>
 
 {{if .Error}}
 <div class="alert alert-error">❌ {{.Error}}</div>
 {{end}}
 
-<div class="form-container">
+<div class="card">
   <form method="POST" action="/predict" id="predictForm">
     <div class="form-row">
       <div class="form-group">
-        <label>📅 Tanggal Target</label>
+        <label>📅 Tanggal</label>
         <input type="date" name="tanggal" value="{{.CurrentDate}}" required class="form-input">
       </div>
       <div class="form-group">
@@ -26,87 +26,94 @@
       </div>
     </div>
     <div class="form-group">
-      <label>🔑 Gemini API Key <span class="optional">(opsional — tanpa key pakai analisa paito saja)</span></label>
+      <label>🔑 Gemini API Key <span class="hint-inline">(opsional)</span></label>
       <input type="text" name="api_key" value="{{.GeminiKey}}"
-             placeholder="AIzaSy..." class="form-input">
-      <small class="hint">Gratis di <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></small>
+             placeholder="AIzaSy... (tanpa key: pakai analisa paito saja)"
+             class="form-input" autocomplete="off">
+      <div class="hint">Gratis di <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
     </div>
-    <button type="submit" class="btn btn-primary btn-large" id="genBtn">
+    <button type="submit" class="btn btn-primary btn-block" id="genBtn">
       🤖 Generate Prediksi
     </button>
   </form>
 </div>
 
-<div id="loadingBox" style="display:none" class="loading-box">
+<div id="loadingBox" class="loading-box" style="display:none">
   <div class="spinner"></div>
-  <p>Menganalisa data dan menghubungi Gemini AI...</p>
+  <span>Menganalisa data{{if .GeminiKey}} + Gemini AI{{end}}...</span>
 </div>
 
 {{if .Predictions}}
-<section class="section">
-  <h2>🔮 Hasil Prediksi — {{.CurrentDate | formatDate}} Sesi {{.NextSesi}}</h2>
-  <div class="pred-grid">
-    {{range .Predictions}}
-    <div class="pred-card pred-{{.Metode}}">
-      <div class="pred-head">
-        <span class="metode-tag {{.Metode}}">{{.Metode}}</span>
+<div class="section-title">🔮 Hasil Prediksi — Sesi {{.NextSesi}}</div>
+
+{{range .Predictions}}
+<div class="pred-card pred-{{.Metode}}">
+  <div class="pred-header">
+    <span class="badge-metode badge-{{.Metode}}">{{.Metode}}</span>
+    {{if .BBFS}}<span class="bbfs-tag">BBFS: <strong>{{.BBFS}}</strong></span>{{end}}
+  </div>
+
+  {{if .Top2D}}
+  <div class="pred-block">
+    <div class="pred-label">🎯 TOP 2D Rekomendasi</div>
+    <div class="d2-grid">
+      {{range .Top2D}}
+      <div class="d2-item" style="border-color:{{colorOf .D2}}">
+        <div class="d2-val" style="color:{{colorOf .D2}}">{{.D2}}</div>
+        {{if .SesiFreq}}<div class="d2-meta">Sesi: {{.SesiFreq}}x</div>{{end}}
+        {{if .AllFreq}}<div class="d2-meta">Total: {{.AllFreq}}x</div>{{end}}
+        {{if gt .LastSeen 15}}<div class="d2-due">⏳ DUE</div>{{end}}
       </div>
-      {{if .Top2D}}
-      <div class="pred-section">
-        <div class="pred-label">🎯 TOP 2D</div>
-        <div class="chips">
-          {{range .Top2D}}<span class="chip-2d">{{.}}</span>{{end}}
-        </div>
-      </div>
-      {{end}}
-      {{if .BBFS}}
-      <div class="pred-section">
-        <div class="pred-label">🔢 BBFS</div>
-        <div class="bbfs-inline">
-          {{range .BBFS}}<span class="bbfs-d">{{string .}}</span>{{end}}
-        </div>
-      </div>
-      {{end}}
-      {{if .Alasan}}
-      <div class="pred-alasan">💡 {{.Alasan}}</div>
       {{end}}
     </div>
-    {{end}}
   </div>
-</section>
+  {{end}}
+
+  {{if .BBFSList}}
+  <div class="pred-block">
+    <div class="pred-label">🔢 Digit BBFS</div>
+    <div class="bbfs-row">
+      {{range .BBFSList}}<span class="bbfs-digit">{{.}}</span>{{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{if .Alasan}}
+  <div class="pred-alasan">💡 {{.Alasan}}</div>
+  {{end}}
+</div>
+{{end}}
 {{end}}
 
 {{if .BBFS}}
-<section class="section bbfs-result">
-  <h2>🎯 BBFS Terpilih: <span class="bbfs-big">{{.BBFS.Digits}}</span></h2>
-  <p class="bbfs-info">{{.BBFS.TotalPairs}} kombinasi 2D dari digit <strong>{{range .BBFS.DigitList}}<span class="bbfs-d">{{.}}</span>{{end}}</strong></p>
+<div class="card bbfs-result-card">
+  <div class="section-title-sm">🎯 BBFS Terpilih</div>
+  <div class="bbfs-big-row">
+    {{range .BBFS.DigitList}}<span class="bbfs-digit big">{{.}}</span>{{end}}
+  </div>
+  <p class="bbfs-info">{{.BBFS.TotalPairs}} kombinasi 2D dari <strong>{{.BBFS.Digits}}</strong></p>
 
-  <div class="section-sub">
-    <h3>📋 Semua Kombinasi 2D (Fokus Pasang Ini)</h3>
-    <div class="chips">
-      {{range .BBFS.Pairs2D}}<span class="chip-2d large">{{.}}</span>{{end}}
+  <div class="sub-section">
+    <div class="pred-label">📋 Semua Kombinasi 2D</div>
+    <div class="pairs-wrap">
+      {{range .BBFS.Pairs2D}}<span class="pair-chip">{{.}}</span>{{end}}
     </div>
   </div>
 
-  <div class="section-sub">
-    <h3>📊 Matriks BBFS</h3>
-    <table class="matrix-table">
-      <thead>
-        <tr>
-          <th>×</th>
-          {{range .BBFS.DigitList}}<th>{{.}}</th>{{end}}
-        </tr>
-      </thead>
+  <div class="sub-section table-scroll">
+    <div class="pred-label">📊 Matriks</div>
+    <table class="matrix-tbl">
+      <thead><tr>
+        <th>×</th>
+        {{range .BBFS.DigitList}}<th>{{.}}</th>{{end}}
+      </tr></thead>
       <tbody>
         {{range $i, $d1 := .BBFS.DigitList}}
         <tr>
           <th>{{$d1}}</th>
           {{range $j, $d2 := $.BBFS.DigitList}}
-          {{if eq $d1 $d2}}
-          <td class="mx-self">—</td>
-          {{else}}
-          <td class="mx-pair">{{$d1}}{{$d2}}</td>
-          {{end}}
+          {{if eq $d1 $d2}}<td class="mx-self">—</td>
+          {{else}}<td class="mx-pair">{{$d1}}{{$d2}}</td>{{end}}
           {{end}}
         </tr>
         {{end}}
@@ -114,18 +121,18 @@
     </table>
   </div>
 
-  <div class="bbfs-actions">
-    <a href="/bbfs?digits={{.BBFS.Digits}}" class="btn btn-secondary">🔍 Lihat di BBFS Generator</a>
-    <a href="/filter" class="btn btn-secondary">🔍 Filter dengan Gemini</a>
+  <div class="btn-row">
+    <a href="/bbfs?digits={{.BBFS.Digits}}" class="btn btn-secondary">📋 Buka di BBFS</a>
+    <a href="/filter" class="btn btn-secondary">🔍 Filter Gemini</a>
   </div>
-</section>
+</div>
 {{end}}
 
 {{if .GeminiResp}}
-<section class="section">
-  <h2>💬 Respons Lengkap Gemini AI</h2>
+<div class="card">
+  <div class="section-title-sm">💬 Analisa Gemini AI</div>
   <pre class="gemini-box">{{.GeminiResp}}</pre>
-</section>
+</div>
 {{end}}
 
 <script>
