@@ -256,7 +256,19 @@ func isHit(digits, d2 string) bool {
 
 // ── Prediksi & Validasi ───────────────────────────────────────────────────────
 
+// savePrediction menyimpan prediksi — TIDAK menimpa yang sudah ada (INSERT OR IGNORE)
+// Pakai saveOrUpdatePrediction kalau ingin paksa update
 func savePrediction(tanggal string, sesi int, digits, source string) {
+        if len(digits) < 5 {
+                return
+        }
+        db.Exec(
+                `INSERT OR IGNORE INTO bbfs_preds (tanggal, sesi, digits, source) VALUES (?,?,?,?)`,
+                tanggal, sesi, digits, source)
+}
+
+// saveOrUpdatePrediction menimpa prediksi lama (hanya untuk autoPredict sesi berikutnya)
+func saveOrUpdatePrediction(tanggal string, sesi int, digits, source string) {
         if len(digits) < 5 {
                 return
         }
@@ -268,21 +280,16 @@ func savePrediction(tanggal string, sesi int, digits, source string) {
 func autoPredict(tanggal string, sesi int) string {
         nextDate, nextSesi := nextSessionAfter(tanggal, sesi)
 
-        var existing string
-        db.QueryRow(`SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL'`,
-                nextDate, nextSesi).Scan(&existing)
-
+        // autoPredict boleh UPDATE prediksi sesi berikutnya karena result belum ada
+        // (prediksi untuk sesi yang BELUM ada result-nya)
         stats := analyzeD2Enhanced(nextSesi)
         bbfs := buildBBFSFromStats(stats)
         if len(bbfs) < 5 {
                 return ""
         }
 
-        savePrediction(nextDate, nextSesi, bbfs, "AI-LOKAL")
+        saveOrUpdatePrediction(nextDate, nextSesi, bbfs, "AI-LOKAL")
 
-        if existing != "" && existing != bbfs {
-                return fmt.Sprintf("Auto-prediksi Sesi %d (%s) diperbarui: BBFS %s", nextSesi, nextDate, bbfs)
-        }
         return fmt.Sprintf("Auto-prediksi Sesi %d (%s): BBFS %s", nextSesi, nextDate, bbfs)
 }
 
@@ -1269,12 +1276,38 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                 sesiTarget = next
         }
 
+        // Cek apakah result sudah ada untuk sesi ini
+        var existingResult string
+        db.QueryRow(`SELECT nomor FROM results WHERE tanggal=? AND sesi=?`,
+                tanggal, sesiTarget).Scan(&existingResult)
+
+        // Cek apakah prediksi sudah tersimpan sebelumnya
+        var storedBBFS string
+        db.QueryRow(`SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL'`,
+                tanggal, sesiTarget).Scan(&storedBBFS)
+
+        var bbfs string
+        var lockedMsg string
+
+        if existingResult != "" && storedBBFS != "" {
+                // Result sudah ada → tampilkan prediksi ASLI (yang disimpan sebelum result masuk)
+                // TIDAK recalculate agar akurasi bisa diukur dengan jujur
+                bbfs = storedBBFS
+                lockedMsg = fmt.Sprintf("⚠️ Result %s sudah ada — menampilkan prediksi ASLI (tidak diubah)", existingResult)
+        } else {
+                // Result belum ada → generate & simpan prediksi baru
+                paitoStats := analyzeD2Enhanced(sesiTarget)
+                bbfs = buildBBFSFromStats(paitoStats)
+                if len(bbfs) >= 5 {
+                        savePrediction(tanggal, sesiTarget, bbfs, "AI-LOKAL")
+                }
+        }
+
         paitoStats := analyzeD2Enhanced(sesiTarget)
         top10 := paitoStats
         if len(top10) > 10 {
                 top10 = top10[:10]
         }
-        bbfs := buildBBFSFromStats(paitoStats)
 
         pred := Prediction{
                 Metode: "AI-LOKAL",
@@ -1284,13 +1317,13 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
         }
         if len(bbfs) >= 5 {
                 pred.BBFSList = strings.Split(bbfs, "")
-                savePrediction(tanggal, sesiTarget, bbfs, "AI-LOKAL")
         }
 
         data := PageData{
                 CurrentDate: tanggal,
                 NextSesi:    sesiTarget,
                 Predictions: []Prediction{pred},
+                Message:     lockedMsg,
         }
         if len(bbfs) >= 5 {
                 data.BBFS = generateBBFS(bbfs)
