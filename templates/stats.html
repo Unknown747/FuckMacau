@@ -77,6 +77,71 @@
   <div class="hint" style="margin-top:.75rem">💡 Input result kapan saja — sistem tetap akurat meski diinput keesokan paginya.</div>
 </div>
 
+{{/* ── Efektivitas Komponen AI ── */}}
+<div class="section-title" style="margin-top:1.5rem">🎓 Auto-Tuning Komponen AI</div>
+
+{{if .CompStats}}
+{{with index .CompStats 0}}
+{{if .Active}}
+<div class="card" style="margin-bottom:1rem">
+  <div style="font-size:.75rem;color:#637087;margin-bottom:.85rem">
+    Bobot komponen dipelajari otomatis dari {{$.LearnedWeights.EvalCount}} prediksi tervalidasi.
+    Komponen yang rata-rata skornya lebih tinggi saat HIT → bobotnya dinaikkan secara bertahap.
+  </div>
+  <div class="table-scroll">
+  <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+    <thead>
+      <tr style="color:#637087;border-bottom:1px solid #1e2d3d">
+        <th style="text-align:left;padding:.45rem .5rem">Komponen</th>
+        <th style="text-align:right;padding:.45rem .5rem">Avg HIT</th>
+        <th style="text-align:right;padding:.45rem .5rem">Avg MISS</th>
+        <th style="text-align:right;padding:.45rem .5rem">Rasio</th>
+        <th style="text-align:right;padding:.45rem .5rem">Bobot ×</th>
+        <th style="text-align:right;padding:.45rem .5rem">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range $.CompStats}}
+    <tr style="border-bottom:1px solid #111e2b">
+      <td style="padding:.45rem .5rem;font-weight:700;color:#e2e8f0">{{.Component}}</td>
+      <td style="text-align:right;padding:.45rem .5rem;color:#9ae6b4">{{printf "%.2f" .HitAvg}}</td>
+      <td style="text-align:right;padding:.45rem .5rem;color:#fc8181">{{printf "%.2f" .MissAvg}}</td>
+      <td style="text-align:right;padding:.45rem .5rem;color:{{if gt .Ratio 1.1}}#68d391{{else if lt .Ratio 0.9}}#fc8181{{else}}#718096{{end}}">
+        {{printf "%.2f" .Ratio}}×
+      </td>
+      <td style="text-align:right;padding:.45rem .5rem;font-weight:700;color:{{if gt .Mult 1.1}}#f6ad55{{else if lt .Mult 0.9}}#90cdf4{{else}}#e2e8f0{{end}}">
+        {{printf "%.2f" .Mult}}×
+      </td>
+      <td style="text-align:right;padding:.45rem .5rem;font-size:.7rem">
+        {{if gt .Ratio 1.1}}<span style="color:#68d391">▲ kuat</span>
+        {{else if lt .Ratio 0.9}}<span style="color:#fc8181">▼ lemah</span>
+        {{else}}<span style="color:#718096">– netral</span>{{end}}
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <div style="margin-top:.6rem;font-size:.7rem;color:#4a5568;line-height:1.6">
+    <strong style="color:#718096">Rasio</strong> = AvgHIT ÷ AvgMISS · &gt;1.0 = komponen lebih tinggi saat benar &nbsp;·&nbsp;
+    Bobot diperbarui setiap 5 prediksi baru (EMA 30%)
+  </div>
+</div>
+{{else}}
+<div class="card" style="text-align:center;padding:1.5rem 1rem;color:#637087;font-size:.82rem">
+  🎓 Auto-tuning aktif setelah <strong style="color:#e2e8f0">20 prediksi</strong> tervalidasi.
+  Sekarang: <strong style="color:#fbd38d">{{$.LearnedWeights.EvalCount}} eval</strong>.
+  Terus input result untuk mengaktifkan pembelajaran.
+</div>
+{{end}}
+{{end}}
+{{else}}
+<div class="card" style="text-align:center;padding:1.5rem 1rem;color:#637087;font-size:.82rem">
+  🎓 Auto-tuning aktif setelah <strong style="color:#e2e8f0">20 prediksi</strong> tervalidasi.
+  Terus input result untuk mengaktifkan pembelajaran.
+</div>
+{{end}}
+
 <div class="btn-row" style="margin-top:1rem">
   <a href="/predict" class="btn btn-primary">🤖 Generate Prediksi</a>
   <a href="/" class="btn btn-secondary">🏠 Dashboard</a>

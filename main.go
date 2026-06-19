@@ -128,6 +128,8 @@ type PageData struct {
         WR                WinRate
         SesiStats         []SesiStat
         CurrentPrediction *Prediction
+        CompStats         []CompStatRow
+        LearnedWeights    LearnedWeights
 }
 
 // ── DB ────────────────────────────────────────────────────────────────────────
@@ -158,6 +160,227 @@ func initDB() {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(tanggal, sesi, source)
         )`)
+        // Tabel komponen prediksi — simpan skor komponen top-1 D2 saat prediksi dibuat
+        db.Exec(`CREATE TABLE IF NOT EXISTS pred_components (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tanggal TEXT NOT NULL,
+                sesi INTEGER NOT NULL,
+                top_d2 TEXT NOT NULL,
+                bbfs TEXT NOT NULL,
+                markov_score REAL DEFAULT 0,
+                gap_score REAL DEFAULT 0,
+                dow_score REAL DEFAULT 0,
+                corr_score REAL DEFAULT 0,
+                total_score REAL DEFAULT 0,
+                is_hit INTEGER DEFAULT -1,
+                actual_d2 TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(tanggal, sesi)
+        )`)
+        // Tabel bobot yang dipelajari — 1 baris, di-update setelah setiap eval
+        db.Exec(`CREATE TABLE IF NOT EXISTS component_weights (
+                id INTEGER PRIMARY KEY,
+                markov_mult REAL DEFAULT 1.0,
+                gap_mult REAL DEFAULT 1.0,
+                dow_mult REAL DEFAULT 1.0,
+                corr_mult REAL DEFAULT 1.0,
+                eval_count INTEGER DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`)
+        db.Exec(`INSERT OR IGNORE INTO component_weights (id,markov_mult,gap_mult,dow_mult,corr_mult,eval_count) VALUES (1,1.0,1.0,1.0,1.0,0)`)
+}
+
+// ── Learned Weights ───────────────────────────────────────────────────────────
+
+type LearnedWeights struct {
+        MarkovMult float64
+        GapMult    float64
+        DowMult    float64
+        CorrMult   float64
+        EvalCount  int
+}
+
+type CompStatRow struct {
+        Component string
+        HitAvg    float64
+        MissAvg   float64
+        Ratio     float64
+        Mult      float64
+        Active    bool // cukup data untuk tuning
+}
+
+var globalWeights = LearnedWeights{MarkovMult: 1.0, GapMult: 1.0, DowMult: 1.0, CorrMult: 1.0}
+
+func loadLearnedWeights() LearnedWeights {
+        var lw LearnedWeights
+        lw.MarkovMult = 1.0
+        lw.GapMult = 1.0
+        lw.DowMult = 1.0
+        lw.CorrMult = 1.0
+        db.QueryRow(`SELECT markov_mult,gap_mult,dow_mult,corr_mult,eval_count FROM component_weights WHERE id=1`).
+                Scan(&lw.MarkovMult, &lw.GapMult, &lw.DowMult, &lw.CorrMult, &lw.EvalCount)
+        return lw
+}
+
+// retuneWeights menghitung ulang bobot dari eval history dan menyimpannya
+func retuneWeights() {
+        type avg struct{ hit, miss, hitN, missN float64 }
+        stats := map[string]*avg{
+                "markov": {},
+                "gap":    {},
+                "dow":    {},
+                "corr":   {},
+        }
+        rows, err := db.Query(`SELECT markov_score,gap_score,dow_score,corr_score,is_hit FROM pred_components WHERE is_hit >= 0`)
+        if err != nil {
+                return
+        }
+        defer rows.Close()
+        total := 0
+        for rows.Next() {
+                var m, g, d, c float64
+                var hit int
+                rows.Scan(&m, &g, &d, &c, &hit)
+                total++
+                vals := map[string]float64{"markov": m, "gap": g, "dow": d, "corr": c}
+                for k, v := range vals {
+                        if hit == 1 {
+                                stats[k].hit += v
+                                stats[k].hitN++
+                        } else {
+                                stats[k].miss += v
+                                stats[k].missN++
+                        }
+                }
+        }
+        if total < 20 {
+                return // tunggu sampai ada cukup data
+        }
+        calcMult := func(key string, cur float64) float64 {
+                s := stats[key]
+                hitAvg := 0.0
+                if s.hitN > 0 {
+                        hitAvg = s.hit / s.hitN
+                }
+                missAvg := 0.0
+                if s.missN > 0 {
+                        missAvg = s.miss / s.missN
+                }
+                denom := math.Max(missAvg, 0.01)
+                ratio := hitAvg / denom
+                raw := math.Max(0.4, math.Min(ratio, 2.5))
+                // EMA: 30% baru, 70% lama — perubahan bertahap
+                return math.Round((0.7*cur+0.3*raw)*100) / 100
+        }
+        cur := loadLearnedWeights()
+        newM := calcMult("markov", cur.MarkovMult)
+        newG := calcMult("gap", cur.GapMult)
+        newD := calcMult("dow", cur.DowMult)
+        newC := calcMult("corr", cur.CorrMult)
+        db.Exec(`UPDATE component_weights SET markov_mult=?,gap_mult=?,dow_mult=?,corr_mult=?,eval_count=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`,
+                newM, newG, newD, newC, total)
+        globalWeights = LearnedWeights{MarkovMult: newM, GapMult: newG, DowMult: newD, CorrMult: newC, EvalCount: total}
+        log.Printf("🎓 Auto-tune: markov×%.2f gap×%.2f dow×%.2f corr×%.2f (%d eval)", newM, newG, newD, newC, total)
+}
+
+// savePredComponent simpan skor komponen top-1 D2 saat prediksi dibuat
+func savePredComponent(tanggal string, sesi int, stats []D2Stat, bbfs string) {
+        if len(stats) == 0 {
+                return
+        }
+        top := stats[0]
+        db.Exec(`INSERT OR REPLACE INTO pred_components
+                (tanggal,sesi,top_d2,bbfs,markov_score,gap_score,dow_score,corr_score,total_score,is_hit,actual_d2)
+                VALUES (?,?,?,?,?,?,?,?,?,-1,'')`,
+                tanggal, sesi, top.D2, bbfs,
+                top.MarkovScore, top.GapScore, top.DowScore, top.CorrScore, top.Score)
+}
+
+// evalPrediction: saat result masuk, tandai prediksi sesi itu HIT/MISS
+func evalPrediction(tanggal string, sesi int, actualNomor string) {
+        if len(actualNomor) < 4 {
+                return
+        }
+        actualD2 := actualNomor[2:4]
+        // Cek apakah ada prediksi yang tersimpan untuk sesi ini
+        var digits string
+        err := db.QueryRow(`SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=?`, tanggal, sesi).Scan(&digits)
+        if err != nil || len(digits) < 5 {
+                return
+        }
+        hit := 0
+        if isHit(digits, actualD2) {
+                hit = 1
+        }
+        // Tandai pred_components (jika ada)
+        db.Exec(`UPDATE pred_components SET is_hit=?,actual_d2=? WHERE tanggal=? AND sesi=? AND is_hit=-1`,
+                hit, actualD2, tanggal, sesi)
+        // Trigger retune setiap 5 eval baru
+        var evalCount int
+        db.QueryRow(`SELECT eval_count FROM component_weights WHERE id=1`).Scan(&evalCount)
+        var totalEval int
+        db.QueryRow(`SELECT COUNT(*) FROM pred_components WHERE is_hit >= 0`).Scan(&totalEval)
+        if totalEval >= 20 && totalEval%5 == 0 {
+                go retuneWeights()
+        }
+}
+
+// getCompStats mengambil statistik efektivitas komponen untuk stats page
+func getCompStats() []CompStatRow {
+        type avg struct{ hit, miss, hitN, missN float64 }
+        stats := map[string]*avg{
+                "Markov": {}, "Gap": {}, "DOW": {}, "Corr": {},
+        }
+        rows, err := db.Query(`SELECT markov_score,gap_score,dow_score,corr_score,is_hit FROM pred_components WHERE is_hit >= 0`)
+        if err != nil {
+                return nil
+        }
+        defer rows.Close()
+        total := 0
+        for rows.Next() {
+                var m, g, d, c float64
+                var hit int
+                rows.Scan(&m, &g, &d, &c, &hit)
+                total++
+                if hit == 1 {
+                        stats["Markov"].hit += m; stats["Markov"].hitN++
+                        stats["Gap"].hit += g; stats["Gap"].hitN++
+                        stats["DOW"].hit += d; stats["DOW"].hitN++
+                        stats["Corr"].hit += c; stats["Corr"].hitN++
+                } else {
+                        stats["Markov"].miss += m; stats["Markov"].missN++
+                        stats["Gap"].miss += g; stats["Gap"].missN++
+                        stats["DOW"].miss += d; stats["DOW"].missN++
+                        stats["Corr"].miss += c; stats["Corr"].missN++
+                }
+        }
+        lw := loadLearnedWeights()
+        mults := map[string]float64{"Markov": lw.MarkovMult, "Gap": lw.GapMult, "DOW": lw.DowMult, "Corr": lw.CorrMult}
+        order := []string{"Markov", "Gap", "DOW", "Corr"}
+        var result []CompStatRow
+        for _, name := range order {
+                s := stats[name]
+                hitAvg, missAvg := 0.0, 0.0
+                if s.hitN > 0 {
+                        hitAvg = s.hit / s.hitN
+                }
+                if s.missN > 0 {
+                        missAvg = s.miss / s.missN
+                }
+                ratio := 0.0
+                if missAvg > 0 {
+                        ratio = hitAvg / missAvg
+                }
+                result = append(result, CompStatRow{
+                        Component: name,
+                        HitAvg:    math.Round(hitAvg*100) / 100,
+                        MissAvg:   math.Round(missAvg*100) / 100,
+                        Ratio:     math.Round(ratio*100) / 100,
+                        Mult:      mults[name],
+                        Active:    total >= 20,
+                })
+        }
+        return result
 }
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
@@ -292,6 +515,7 @@ func autoPredict(tanggal string, sesi int) string {
         }
 
         saveOrUpdatePrediction(nextDate, nextSesi, bbfs, "AI-LOKAL")
+        savePredComponent(nextDate, nextSesi, stats, bbfs)
 
         return fmt.Sprintf("Auto-prediksi Sesi %d (%s): BBFS %s", nextSesi, nextDate, bbfs)
 }
@@ -1078,14 +1302,16 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         continue
                 }
                 // Formula: sesiFreq (auto-bobot) + allFreq + markov + streak
-                //          + gap (overdue analysis) + dow (hari minggu) + corr (korelasi posisi)
+                //          + gap (overdue) + dow (hari minggu) + corr (korelasi posisi)
+                // Setiap komponen dikalikan bobot yang dipelajari dari backtesting
+                gw := globalWeights
                 score := s.sesiFreq*sesiWeight +
                         s.allFreq*1.5 +
-                        s.markov +
+                        s.markov*gw.MarkovMult +
                         s.streak +
-                        s.gap*0.9 +
-                        s.dow*4.5 +
-                        s.corr*5.5
+                        s.gap*0.9*gw.GapMult +
+                        s.dow*4.5*gw.DowMult +
+                        s.corr*5.5*gw.CorrMult
                 lastSeen := s.lastIdx
                 if s.lastSesiIdx < lastSeen {
                         lastSeen = s.lastSesiIdx
@@ -1539,6 +1765,9 @@ func inputHandler(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
+        // Evaluasi prediksi yang ada untuk sesi ini (SEBELUM generate prediksi baru)
+        evalPrediction(tanggal, sesi, nomor)
+
         autopMsg := autoPredict(tanggal, sesi)
         msg := fmt.Sprintf("Result %s (Sesi %d) tersimpan. %s", nomor, sesi, autopMsg)
         http.Redirect(w, r, "/?msg="+strings.ReplaceAll(msg, " ", "+"), http.StatusSeeOther)
@@ -1578,6 +1807,7 @@ func inputBatchHandler(w http.ResponseWriter, r *http.Request) {
                         tanggal, sesi, nomor); err != nil {
                         fail++
                 } else {
+                        evalPrediction(tanggal, sesi, nomor)
                         ok++
                         lastTanggal = tanggal
                         lastSesi = sesi
@@ -1681,8 +1911,10 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {
         render(w, "stats", PageData{
-                SesiStats: calcSesiStats(),
-                WR:        calcWinRate(),
+                SesiStats:      calcSesiStats(),
+                WR:             calcWinRate(),
+                CompStats:      getCompStats(),
+                LearnedWeights: loadLearnedWeights(),
         })
 }
 
@@ -1743,6 +1975,8 @@ func seedPredictions() {
 
 func main() {
         initDB()
+        // Load learned weights ke memori supaya analyzeD2Enhanced bisa pakai
+        globalWeights = loadLearnedWeights()
         seedPredictions()
         loadTemplates()
 
