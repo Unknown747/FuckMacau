@@ -40,6 +40,9 @@ type D2Stat struct {
         LastSeen    int
         Score       float64
         MarkovScore float64
+        GapScore    float64
+        DowScore    float64
+        CorrScore   float64
 }
 
 type Prediction struct {
@@ -646,23 +649,6 @@ func streakBonus(sesiOnly []string, d2 string) float64 {
         return 0
 }
 
-// dueGapBonus menghitung bonus "due" berdasarkan gap sejak terakhir muncul di sesi ini
-func dueGapBonus(sesiOnly []string, d2 string) float64 {
-        for i := len(sesiOnly) - 1; i >= 0; i-- {
-                if sesiOnly[i] == d2 {
-                        gap := len(sesiOnly) - 1 - i
-                        if gap == 0 {
-                                return 0
-                        }
-                        // gap besar = due → bonus besar, tapi capped
-                        return math.Min(math.Log(float64(gap+1))*3.0, 12.0)
-                }
-        }
-        // Belum pernah muncul di sesi ini — berikan bonus eksplorasi kecil saja
-        // (jangan terlalu tinggi agar tidak mengalahkan D2 yang memang sering muncul)
-        return 3.5
-}
-
 // ── Upgrade 1: Sesi-Specific Markov (sesi N hari ini → sesi N besok) ──────────
 // Berbeda dengan markovSesiTransition (S4→S5), ini melacak S5→S5 lintas hari.
 func markovSesiSelf(entries []rawEntry, sesi int) map[string]map[string]float64 {
@@ -703,6 +689,10 @@ func digitPairCorrelation(entries []rawEntry, targetSesi int) map[string]float64
         if prevSesi < 1 {
                 prevSesi = 6
         }
+        // crossDay: prevSesi > targetSesi artinya prevSesi ada di hari kalender sebelumnya
+        // Contoh: targetSesi=1 (00:01), prevSesi=6 (23:00 hari sebelumnya)
+        crossDay := prevSesi > targetSesi
+
         // Pasangkan hasil prevSesi dan targetSesi per tanggal
         byDate := map[string]map[int]string{}
         for _, e := range entries {
@@ -712,10 +702,26 @@ func digitPairCorrelation(entries []rawEntry, targetSesi int) map[string]float64
                 byDate[e.tanggal][e.sesi] = e.nomor
         }
         tensFreq := map[string]map[string]float64{}
-        for _, sesiMap := range byDate {
-                prev := sesiMap[prevSesi]
+        for date, sesiMap := range byDate {
                 curr := sesiMap[targetSesi]
-                if len(prev) < 4 || len(curr) < 4 {
+                if len(curr) < 4 {
+                        continue
+                }
+                var prev string
+                if crossDay {
+                        // prevSesi ada di hari sebelumnya
+                        t, err := time.Parse("2006-01-02", date)
+                        if err != nil {
+                                continue
+                        }
+                        prevDate := t.AddDate(0, 0, -1).Format("2006-01-02")
+                        if m, ok := byDate[prevDate]; ok {
+                                prev = m[prevSesi]
+                        }
+                } else {
+                        prev = sesiMap[prevSesi]
+                }
+                if len(prev) < 4 {
                         continue
                 }
                 tens := string(prev[2]) // digit puluhan result sesi sebelumnya
@@ -1091,6 +1097,9 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         LastSeen:    lastSeen,
                         Score:       score,
                         MarkovScore: s.markov,
+                        GapScore:    s.gap,
+                        DowScore:    s.dow,
+                        CorrScore:   s.corr,
                 })
         }
 

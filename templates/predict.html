@@ -85,6 +85,52 @@
 </div>
 {{end}}
 
+{{/* ── Breakdown Komponen Skor ── */}}
+{{if .Predictions}}
+{{range .Predictions}}
+{{if .Top2D}}
+<div class="card" style="margin-top:.5rem">
+  <div class="card-title" style="margin-bottom:.75rem">🔬 Transparansi Skor — Sesi {{$.NextSesi}}</div>
+  <div style="font-size:.73rem;color:#637087;margin-bottom:.75rem">Kontribusi tiap komponen AI terhadap skor akhir setiap 2D.</div>
+  <div class="table-scroll">
+  <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+    <thead>
+      <tr style="color:#637087;border-bottom:1px solid #1e2d3d">
+        <th style="text-align:left;padding:.4rem .5rem">2D</th>
+        <th style="text-align:right;padding:.4rem .5rem">Skor</th>
+        <th style="text-align:right;padding:.4rem .5rem">Markov</th>
+        <th style="text-align:right;padding:.4rem .5rem">Gap</th>
+        <th style="text-align:right;padding:.4rem .5rem">DOW</th>
+        <th style="text-align:right;padding:.4rem .5rem">Corr</th>
+        <th style="text-align:right;padding:.4rem .5rem">Sesi</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .Top2D}}
+    <tr style="border-bottom:1px solid #111e2b">
+      <td style="padding:.4rem .5rem;font-weight:700;color:{{colorOf .D2}}">{{.D2}}</td>
+      <td style="text-align:right;padding:.4rem .5rem;color:#e2e8f0">{{printf "%.1f" .Score}}</td>
+      <td style="text-align:right;padding:.4rem .5rem;color:#90cdf4">{{printf "%.2f" .MarkovScore}}</td>
+      <td style="text-align:right;padding:.4rem .5rem;color:{{if gt .GapScore 6.0}}#f6ad55{{else}}#718096{{end}}">{{printf "%.2f" .GapScore}}</td>
+      <td style="text-align:right;padding:.4rem .5rem;color:{{if gt .DowScore 0.05}}#9ae6b4{{else}}#718096{{end}}">{{printf "%.2f" .DowScore}}</td>
+      <td style="text-align:right;padding:.4rem .5rem;color:{{if gt .CorrScore 0.05}}#b794f4{{else}}#718096{{end}}">{{printf "%.2f" .CorrScore}}</td>
+      <td style="text-align:right;padding:.4rem .5rem;color:#4fd1c5">{{.SesiFreq}}x</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <div style="margin-top:.6rem;font-size:.7rem;color:#4a5568;line-height:1.6">
+    <strong style="color:#718096">Markov</strong> = pola transisi antar sesi &nbsp;·&nbsp;
+    <strong style="color:#718096">Gap</strong> = overdue analysis &nbsp;·&nbsp;
+    <strong style="color:#718096">DOW</strong> = pola hari-dalam-seminggu &nbsp;·&nbsp;
+    <strong style="color:#718096">Corr</strong> = korelasi digit posisi
+  </div>
+</div>
+{{end}}
+{{end}}
+{{end}}
+
 {{/* ── Lihat sesi lain ── */}}
 <div class="card" style="margin-top:.25rem">
   <div class="card-title" style="margin-bottom:.6rem">🔎 Lihat Prediksi Sesi Lain</div>
