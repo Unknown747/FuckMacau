@@ -364,6 +364,33 @@ func calcWinRate() WinRate {
 }
 
 // calcSesiStats hitung akurasi per sesi 1-6
+// calcSesiWeight mengembalikan bobot dinamis untuk sesiFreq berdasarkan akurasi
+// historis sesi tersebut. Semakin tinggi win rate, semakin besar bobot diberikan.
+func calcSesiWeight(targetSesi int) float64 {
+        stats := calcSesiStats()
+        for _, s := range stats {
+                if s.Sesi != targetSesi {
+                        continue
+                }
+                if s.Total < 5 {
+                        return 6.0 // data terlalu sedikit, gunakan bobot default
+                }
+                switch {
+                case s.Pct >= 45:
+                        return 9.0 // sesi sangat akurat — boost tinggi
+                case s.Pct >= 35:
+                        return 7.5
+                case s.Pct >= 25:
+                        return 6.0 // bobot default
+                case s.Pct >= 15:
+                        return 4.5
+                default:
+                        return 3.0 // sesi kurang akurat — kurangi pengaruh sesiFreq
+                }
+        }
+        return 6.0
+}
+
 func calcSesiStats() []SesiStat {
         var result []SesiStat
         for s := 1; s <= 6; s++ {
@@ -643,6 +670,23 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 return nil
         }
 
+        // ── (1) Batasi hanya 45 hari terakhir ────────────────────────────────────
+        cutoff := now.AddDate(0, 0, -45)
+        var filtered []rawEntry
+        for _, e := range allEntries {
+                t, err := time.Parse("2006-01-02", e.tanggal)
+                if err != nil || !t.Before(cutoff) {
+                        filtered = append(filtered, e)
+                }
+        }
+        allEntries = filtered
+        if len(allEntries) == 0 {
+                return nil
+        }
+
+        // ── (3) Bobot sesiFreq dinamis dari akurasi historis sesi ini ────────────
+        sesiWeight := calcSesiWeight(targetSesi)
+
         type stat struct {
                 allFreq     float64
                 sesiFreq    float64
@@ -798,13 +842,14 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
         }
 
         // Gabungkan skor — hanya D2 yang pernah muncul di sesi ini atau punya Markov score
+        // Gunakan sesiWeight (auto-learning) sebagai pengganti bobot 6.0 yang statis
         var list []D2Stat
         for d2, s := range stats {
                 // Filter: buang D2 yang benar-benar tidak pernah muncul dan tidak ada sinyal
                 if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 {
                         continue
                 }
-                score := s.sesiFreq*6.0 + s.allFreq*1.5 + s.markov + s.streak + s.due*0.8
+                score := s.sesiFreq*sesiWeight + s.allFreq*1.5 + s.markov + s.streak + s.due*0.8
                 lastSeen := s.lastIdx
                 if s.lastSesiIdx < lastSeen {
                         lastSeen = s.lastSesiIdx
@@ -818,6 +863,25 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         MarkovScore: s.markov,
                 })
         }
+
+        // ── (2) Filter 2D lemah: SesiFreq==0 dan AllFreq di bawah rata-rata ──────
+        totalAllFreq := 0
+        for _, d := range list {
+                totalAllFreq += d.AllFreq
+        }
+        avgAllFreq := 0
+        if len(list) > 0 {
+                avgAllFreq = totalAllFreq / len(list)
+        }
+        var strong []D2Stat
+        for _, d := range list {
+                if d.SesiFreq == 0 && d.AllFreq < avgAllFreq {
+                        continue // buang 2D lemah
+                }
+                strong = append(strong, d)
+        }
+        list = strong
+
         sort.Slice(list, func(i, j int) bool {
                 if list[i].Score != list[j].Score {
                         return list[i].Score > list[j].Score
@@ -877,12 +941,48 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 pairScore[s.D2] = s.Score
         }
 
+        // ── (4) Identifikasi 2D lemah dan digit yang berasal dari mereka ──────────
+        // "Lemah" = SesiFreq==0 dan skor di bawah 40% rata-rata skor seluruh D2
+        totalScore := 0.0
+        for _, s := range stats {
+                totalScore += s.Score
+        }
+        weakThreshold := 0.0
+        if len(stats) > 0 {
+                weakThreshold = (totalScore / float64(len(stats))) * 0.4
+        }
+        // Untuk setiap digit, hitung berapa banyak pair lemah vs kuat yang melibatkannya
+        digitWeakCount := map[string]int{}
+        digitStrongCount := map[string]int{}
+        for _, s := range stats {
+                if len(s.D2) != 2 {
+                        continue
+                }
+                d0, d1 := string(s.D2[0]), string(s.D2[1])
+                if s.SesiFreq == 0 && s.Score < weakThreshold {
+                        digitWeakCount[d0]++
+                        digitWeakCount[d1]++
+                } else {
+                        digitStrongCount[d0]++
+                        digitStrongCount[d1]++
+                }
+        }
+
         // Hitung skor kontribusi per digit (sum dari semua pair yang melibatkan digit ini)
         digitContrib := map[string]float64{}
         for pair, score := range pairScore {
                 if len(pair) == 2 {
                         digitContrib[string(pair[0])] += score
                         digitContrib[string(pair[1])] += score
+                }
+        }
+
+        // Terapkan penalti 0.6x pada digit yang mayoritas pair-nya lemah
+        for d := range digitContrib {
+                weak := digitWeakCount[d]
+                strong := digitStrongCount[d]
+                if weak > strong {
+                        digitContrib[d] *= 0.6
                 }
         }
 
