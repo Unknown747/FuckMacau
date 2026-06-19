@@ -175,6 +175,43 @@ textarea.form-input{resize:vertical;font-family:inherit}
 .step{display:flex;align-items:flex-start;gap:.75rem;font-size:.85rem}
 .step-n{display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;background:#3182ce;color:#fff;border-radius:50%;font-size:.75rem;font-weight:700;flex-shrink:0}
 
+/* ── Win Rate Bar ── */
+.wr-bar{background:#1a202c;border:1px solid #2d3748;border-radius:.75rem;padding:.85rem 1rem;margin-bottom:1rem}
+.wr-item{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem}
+.wr-label{font-size:.82rem;font-weight:600;color:#a0aec0}
+.wr-pct{font-size:1.3rem;font-weight:800;font-family:monospace}
+.wr-good{color:#68d391}
+.wr-bad{color:#fc8181}
+.wr-detail{display:flex;align-items:center;gap:.5rem;font-size:.78rem;margin-bottom:.5rem;flex-wrap:wrap}
+.wr-hit{color:#68d391}
+.wr-miss{color:#fc8181}
+.wr-total{color:#718096}
+.wr-sep{color:#4a5568}
+.wr-progress{height:.45rem;background:#2d3748;border-radius:.25rem;overflow:hidden}
+.wr-fill{height:100%;border-radius:.25rem;transition:width .4s}
+.wr-fill-good{background:#48bb78}
+.wr-fill-bad{background:#f56565}
+
+/* ── Validasi BBFS ── */
+.val-list{display:flex;flex-direction:column;gap:.45rem}
+.val-row{display:flex;align-items:center;gap:.75rem;background:#2d3748;border-radius:.55rem;padding:.6rem .8rem;border-left:3px solid #4a5568;flex-wrap:wrap}
+.val-row.val-hit{border-left-color:#48bb78;background:#1c4532aa}
+.val-row.val-miss{border-left-color:#f56565;background:#742a2aaa}
+.val-row.val-pending{border-left-color:#718096}
+.val-info{display:flex;flex-direction:column;gap:.25rem;min-width:0;flex:1}
+.val-date{font-size:.72rem;color:#718096;white-space:nowrap}
+.val-bbfs-row{display:flex;gap:.25rem}
+.val-digit{display:inline-flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;background:#553c9a;color:#e9d8fd;border-radius:.3rem;font-family:monospace;font-size:.78rem;font-weight:700}
+.val-result{display:flex;flex-direction:column;align-items:center;gap:.1rem;min-width:3.5rem}
+.val-nomor{font-size:.88rem;font-weight:700;letter-spacing:.05em;color:#e2e8f0;font-family:monospace}
+.val-d2{font-size:1rem;font-weight:800;font-family:monospace}
+.val-pending-txt{font-size:.72rem;color:#718096;text-align:center}
+.val-badge{min-width:4.5rem;text-align:right}
+.val-status{font-size:.78rem;font-weight:700;padding:.2em .55em;border-radius:.4em;white-space:nowrap}
+.val-status.val-hit{background:#276749;color:#9ae6b4}
+.val-status.val-miss{background:#742a2a;color:#fed7d7}
+.val-status.val-pending{background:#2d3748;color:#a0aec0}
+
 /* ── Footer ── */
 footer{text-align:center;color:#4a5568;font-size:.75rem;padding:1.5rem .9rem;border-top:1px solid #1a202c;margin-top:1rem}
 

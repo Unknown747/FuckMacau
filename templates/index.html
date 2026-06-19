@@ -4,6 +4,7 @@
 <div class="alert alert-success">✅ {{.Message}}</div>
 {{end}}
 
+{{/* ── Info Bar ── */}}
 <div class="info-bar">
   <div class="info-card">
     <div class="info-label">Tanggal</div>
@@ -23,6 +24,28 @@
   </div>
 </div>
 
+{{/* ── Win Rate Bar ── */}}
+{{if gt .WR.Total 0}}
+<div class="wr-bar">
+  <div class="wr-item">
+    <span class="wr-label">🎯 Win Rate BBFS</span>
+    <span class="wr-pct {{if ge .WR.Pct 50}}wr-good{{else}}wr-bad{{end}}">{{.WR.Pct}}%</span>
+  </div>
+  <div class="wr-detail">
+    <span class="wr-hit">✅ {{.WR.Hits}} HIT</span>
+    <span class="wr-sep">·</span>
+    <span class="wr-miss">❌ {{.WR.Miss}} MISS</span>
+    <span class="wr-sep">·</span>
+    <span class="wr-total">{{.WR.Total}} prediksi valid</span>
+  </div>
+  <div class="wr-progress">
+    <div class="wr-fill {{if ge .WR.Pct 50}}wr-fill-good{{else}}wr-fill-bad{{end}}"
+         style="width:{{.WR.Pct}}%"></div>
+  </div>
+</div>
+{{end}}
+
+{{/* ── Quick Actions ── */}}
 <div class="action-grid">
   <a href="/predict" class="action-btn primary">🤖 Prediksi AI</a>
   <a href="/input" class="action-btn">➕ Input Result</a>
@@ -30,6 +53,37 @@
   <a href="/paito?days=60" class="action-btn">📊 60 Hari</a>
 </div>
 
+{{/* ── Validasi BBFS ── */}}
+{{if .Validations}}
+<div class="card">
+  <div class="card-title">🔍 Validasi BBFS — Hit / Miss</div>
+  <div class="val-list">
+    {{range .Validations}}
+    <div class="val-row {{hitClass .}}">
+      <div class="val-info">
+        <span class="val-date">{{.Tanggal | formatDate}} S{{.Sesi}}</span>
+        <div class="val-bbfs-row">
+          {{range .DigitList}}<span class="val-digit">{{.}}</span>{{end}}
+        </div>
+      </div>
+      <div class="val-result">
+        {{if .HasResult}}
+        <span class="val-nomor">{{.Result}}</span>
+        <span class="val-d2" style="color:{{colorOf .D2}}">{{.D2}}</span>
+        {{else}}
+        <span class="val-pending-txt">Belum ada result</span>
+        {{end}}
+      </div>
+      <div class="val-badge">
+        <span class="val-status {{hitClass .}}">{{hitLabel .}}</span>
+      </div>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{/* ── Paito 14 Hari ── */}}
 <div class="card">
   <div class="card-title">📊 Paito 14 Hari Terakhir</div>
   <div class="table-scroll">
