@@ -4,8 +4,8 @@
 <div class="alert alert-success">✅ {{.Message}}</div>
 {{end}}
 
-{{/* ── Info Bar ── */}}
-<div class="info-bar">
+{{/* ── Info Bar (2 kartu saja) ── */}}
+<div class="info-bar info-bar-2">
   <div class="info-card">
     <div class="info-label">Tanggal</div>
     <div class="info-val">{{.CurrentDate | formatDate}}</div>
@@ -14,17 +14,43 @@
     <div class="info-label">Sesi Sekarang</div>
     <div class="info-val"><span class="badge badge-blue">Sesi {{.CurrentSesi}}</span></div>
   </div>
-  <div class="info-card">
-    <div class="info-label">Prediksi Untuk</div>
-    <div class="info-val"><span class="badge badge-green">Sesi {{.NextSesi}}</span></div>
-  </div>
-  <div class="info-card">
-    <div class="info-label">Total Data</div>
-    <div class="info-val">{{if .Stats}}{{.Stats.Total}}{{else}}0{{end}} result</div>
-  </div>
 </div>
 
-{{/* ── Win Rate Bar ── */}}
+{{/* ── Prediksi Sesi Berikutnya ── */}}
+{{if .CurrentPrediction}}
+<div class="card pred-dashboard">
+  <div class="pred-dash-header">
+    <span class="pred-dash-title">🤖 Prediksi AI — Sesi {{.NextSesi}}</span>
+    <span class="badge badge-AILOKAL">AI-LOKAL</span>
+  </div>
+
+  <div class="bbfs-showcase">
+    <div class="bbfs-label">BBFS 5 Digit</div>
+    <div class="bbfs-digits-row">
+      {{range .CurrentPrediction.BBFSList}}
+      <span class="bbfs-digit-big">{{.}}</span>
+      {{end}}
+    </div>
+  </div>
+
+  {{if .CurrentPrediction.Top2D}}
+  <div class="top2d-section">
+    <div class="top2d-label">🎯 Top 2D</div>
+    <div class="top2d-row">
+      {{range .CurrentPrediction.Top2D}}
+      <span class="top2d-badge">{{.D2}}</span>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  <a href="/predict" class="btn btn-primary btn-block" style="margin-top:1rem">
+    🔮 Prediksi Lebih Detail
+  </a>
+</div>
+{{end}}
+
+{{/* ── Win Rate ── */}}
 {{if gt .WR.Total 0}}
 <div class="wr-bar">
   <div class="wr-item">
@@ -36,7 +62,7 @@
     <span class="wr-sep">·</span>
     <span class="wr-miss">❌ {{.WR.Miss}} MISS</span>
     <span class="wr-sep">·</span>
-    <span class="wr-total">{{.WR.Total}} prediksi valid</span>
+    <span class="wr-total">{{.WR.Total}} prediksi</span>
   </div>
   <div class="wr-progress">
     <div class="wr-fill {{if ge .WR.Pct 50}}wr-fill-good{{else}}wr-fill-bad{{end}}"
@@ -48,34 +74,29 @@
 {{/* ── Quick Actions ── */}}
 <div class="action-grid">
   <a href="/predict" class="action-btn primary">🤖 Prediksi AI</a>
-  <a href="/input" class="action-btn">➕ Input Result</a>
+  <a href="/input" class="action-btn">📋 Result</a>
   <a href="/paito" class="action-btn">📈 Paito</a>
   <a href="/paito?days=60" class="action-btn">📊 60 Hari</a>
 </div>
 
-{{/* ── Validasi BBFS ── */}}
+{{/* ── Validasi BBFS (simpel) ── */}}
 {{if .Validations}}
 <div class="card">
-  <div class="card-title">🔍 Validasi BBFS — Hit / Miss</div>
-  <div class="val-list">
+  <div class="card-title">📋 Riwayat BBFS</div>
+  <div class="val-simple-list">
     {{range .Validations}}
-    <div class="val-row {{hitClass .}}">
-      <div class="val-info">
-        <span class="val-date">{{.Tanggal | formatDate}} S{{.Sesi}}</span>
-        <div class="val-bbfs-row">
-          {{range .DigitList}}<span class="val-digit">{{.}}</span>{{end}}
-        </div>
+    <div class="val-simple-row {{hitClass .}}">
+      <div class="val-simple-left">
+        <span class="val-simple-date">{{.Tanggal | formatDate}} S{{.Sesi}}</span>
+        <span class="val-simple-bbfs">BBFS: {{.Digits}}</span>
       </div>
-      <div class="val-result">
+      <div class="val-simple-right">
         {{if .HasResult}}
-        <span class="val-nomor">{{.Result}}</span>
-        <span class="val-d2" style="color:{{colorOf .D2}}">{{.D2}}</span>
+        <span class="val-simple-keluar">Keluar: {{.Result}} <strong>({{.D2}})</strong></span>
         {{else}}
-        <span class="val-pending-txt">Belum ada result</span>
+        <span class="val-simple-pending">Belum ada result</span>
         {{end}}
-      </div>
-      <div class="val-badge">
-        <span class="val-status {{hitClass .}}">{{hitLabel .}}</span>
+        <span class="val-simple-badge {{hitClass .}}">{{hitLabel .}}</span>
       </div>
     </div>
     {{end}}
@@ -83,38 +104,4 @@
 </div>
 {{end}}
 
-{{/* ── Paito 14 Hari ── */}}
-<div class="card">
-  <div class="card-title">📊 Paito 14 Hari Terakhir</div>
-  <div class="table-scroll">
-    <table class="paito-tbl">
-      <thead>
-        <tr>
-          <th>Tanggal</th>
-          <th>S1<small>13:00</small></th>
-          <th>S2<small>16:00</small></th>
-          <th>S3<small>19:00</small></th>
-          <th>S4<small>21:00</small></th>
-          <th>S5<small>23:00</small></th>
-          <th>S6<small>01:00</small></th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range .PaitoRows}}
-        <tr>
-          <td class="date-td">{{.Tanggal | formatDate}}</td>
-          {{range .Cells}}
-          <td class="paito-td" style="border-top:3px solid {{.Color}}">
-            {{if ne .Nomor "----"}}
-            <div class="p4d">{{.Nomor}}</div>
-            <div class="p2d" style="color:{{.Color}}">{{.D2}}</div>
-            {{else}}<div class="p-empty">—</div>{{end}}
-          </td>
-          {{end}}
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-  </div>
-</div>
 {{end}}

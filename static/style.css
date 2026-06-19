@@ -30,6 +30,7 @@ code{background:#2d3748;padding:.1em .4em;border-radius:.3em;font-size:.85em;fon
 
 /* ── Info Bar ── */
 .info-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-bottom:1rem}
+.info-bar-2{grid-template-columns:repeat(2,1fr)}
 .info-card{background:#1a202c;border:1px solid #2d3748;border-radius:.6rem;padding:.75rem;text-align:center}
 .info-label{font-size:.7rem;color:#718096;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem}
 .info-val{font-size:.95rem;font-weight:600}
@@ -224,7 +225,11 @@ footer{text-align:center;color:#4a5568;font-size:.75rem;padding:1.5rem .9rem;bor
   .nav-toggle{display:flex}
   .container{padding:.75rem .65rem 3rem}
   .info-bar{grid-template-columns:repeat(2,1fr)}
+  .info-bar-2{grid-template-columns:repeat(2,1fr)}
   .action-grid{grid-template-columns:repeat(2,1fr)}
+  .bbfs-digits-row{gap:.4rem}
+  .bbfs-digit-big{width:2.8rem;height:2.8rem;font-size:1.4rem}
+  .val-simple-row{flex-direction:column;align-items:flex-start;gap:.3rem}
   .form-row{grid-template-columns:1fr}
   .d2-grid{gap:.3rem}
   .d2-val{font-size:.95rem}
@@ -237,6 +242,37 @@ footer{text-align:center;color:#4a5568;font-size:.75rem;padding:1.5rem .9rem;bor
   .bbfs-stats{gap:.35rem}
   .bbfs-big-row{gap:.3rem}
 }
+/* ── Dashboard Prediction Card ── */
+.pred-dashboard{border:1px solid #b7791f;background:#1a202c}
+.pred-dash-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}
+.pred-dash-title{font-weight:700;font-size:1rem;color:#e2e8f0}
+.bbfs-showcase{text-align:center;margin:.5rem 0 1rem}
+.bbfs-label{font-size:.72rem;color:#718096;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.5rem}
+.bbfs-digits-row{display:flex;justify-content:center;gap:.55rem;flex-wrap:wrap}
+.bbfs-digit-big{display:flex;align-items:center;justify-content:center;width:3.2rem;height:3.2rem;border-radius:.65rem;background:#2d3748;border:2px solid #b7791f;font-size:1.6rem;font-weight:800;color:#fbd38d}
+.top2d-section{background:#2d3748;border-radius:.55rem;padding:.65rem .8rem}
+.top2d-label{font-size:.7rem;color:#718096;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.45rem}
+.top2d-row{display:flex;flex-wrap:wrap;gap:.35rem}
+.top2d-badge{background:#1a202c;border:1px solid #4a5568;color:#90cdf4;font-size:.85rem;font-weight:700;padding:.2rem .55rem;border-radius:.4rem}
+
+/* ── Validasi Simpel ── */
+.val-simple-list{display:flex;flex-direction:column;gap:.4rem}
+.val-simple-row{display:flex;align-items:center;justify-content:space-between;background:#2d3748;border-radius:.55rem;padding:.6rem .85rem;border-left:3px solid #4a5568;gap:.5rem;flex-wrap:wrap}
+.val-simple-row.val-hit{border-left-color:#48bb78;background:#1c4532aa}
+.val-simple-row.val-miss{border-left-color:#fc8181;background:#4a2020aa}
+.val-simple-row.val-pending{border-left-color:#4a5568}
+.val-simple-left{display:flex;flex-direction:column;gap:.15rem;min-width:0}
+.val-simple-date{font-size:.72rem;color:#718096}
+.val-simple-bbfs{font-size:.88rem;color:#e2e8f0;font-weight:600;font-family:monospace;letter-spacing:.1rem}
+.val-simple-right{display:flex;align-items:center;gap:.55rem;flex-shrink:0}
+.val-simple-keluar{font-size:.85rem;color:#a0aec0}
+.val-simple-keluar strong{color:#90cdf4}
+.val-simple-pending{font-size:.78rem;color:#718096;font-style:italic}
+.val-simple-badge{font-size:.78rem;font-weight:700;padding:.2rem .55rem;border-radius:.4rem}
+.val-simple-badge.val-hit{background:#276749;color:#68d391}
+.val-simple-badge.val-miss{background:#742a2a;color:#fc8181}
+.val-simple-badge.val-pending{background:#2d3748;color:#718096}
+
 @media(max-width:380px){
   .d2-grid{grid-template-columns:repeat(5,1fr);gap:.2rem}
   .d2-val{font-size:.8rem}

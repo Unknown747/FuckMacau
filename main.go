@@ -92,24 +92,22 @@ type Stats struct {
 }
 
 type PageData struct {
-        Results     []Result
-        Predictions []Prediction
-        PaitoRows   []PaitoRow
-        FreqItems   []FreqItem
-        BBFS        *BBFSResult
-        Error       string
-        Message     string
-        CurrentDate string
-        CurrentSesi int
-        NextSesi    int
-        GeminiKey   string
-        Stats       *Stats
-        GeminiResp  string
-
-        // Validasi & WR
-        Validations []BBFSValidation
-        WR          WinRate
-        AutoPredMsg string
+        Results           []Result
+        Predictions       []Prediction
+        PaitoRows         []PaitoRow
+        FreqItems         []FreqItem
+        BBFS              *BBFSResult
+        Error             string
+        Message           string
+        CurrentDate       string
+        CurrentSesi       int
+        NextSesi          int
+        GeminiKey         string
+        Stats             *Stats
+        GeminiResp        string
+        Validations       []BBFSValidation
+        WR                WinRate
+        CurrentPrediction *Prediction
 }
 
 // ── DB ────────────────────────────────────────────────────────────────────────
@@ -885,6 +883,43 @@ func currentSesi() int {
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
+// getCurrentPrediction ambil atau generate prediksi BBFS untuk sesi target
+func getCurrentPrediction(nextSesi int) *Prediction {
+        today := time.Now().Format("2006-01-02")
+
+        // Cek apakah sudah ada prediksi hari ini untuk sesi ini
+        var digits string
+        db.QueryRow(
+                `SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL'`,
+                today, nextSesi).Scan(&digits)
+
+        // Jika belum ada, generate baru
+        if len(digits) < 5 {
+                stats := analyzeD2(nextSesi, 150, 60)
+                digits = buildBBFSFromStats(stats)
+                if len(digits) >= 5 {
+                        savePrediction(today, nextSesi, digits, "AI-LOKAL")
+                }
+        }
+        if len(digits) < 5 {
+                return nil
+        }
+
+        stats := analyzeD2(nextSesi, 150, 60)
+        top10 := stats
+        if len(top10) > 10 {
+                top10 = top10[:10]
+        }
+
+        return &Prediction{
+                Metode:   "AI-LOKAL",
+                Top2D:    top10,
+                BBFS:     digits,
+                BBFSList: strings.Split(digits, ""),
+                Alasan:   buildPaitoAlasan(top10, nextSesi),
+        }
+}
+
 func indexHandler(w http.ResponseWriter, r *http.Request) {
         if r.URL.Path != "/" {
                 http.NotFound(w, r)
@@ -893,14 +928,14 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
         sesi := currentSesi()
         next := sesi%6 + 1
         render(w, "index", PageData{
-                PaitoRows:   buildPaito(14),
-                CurrentDate: time.Now().Format("2006-01-02"),
-                CurrentSesi: sesi,
-                NextSesi:    next,
-                Stats:       calcStats(),
-                Message:     r.URL.Query().Get("msg"),
-                Validations: getBBFSValidations(15),
-                WR:          calcWinRate(),
+                CurrentDate:       time.Now().Format("2006-01-02"),
+                CurrentSesi:       sesi,
+                NextSesi:          next,
+                Stats:             calcStats(),
+                Message:           r.URL.Query().Get("msg"),
+                Validations:       getBBFSValidations(10),
+                WR:                calcWinRate(),
+                CurrentPrediction: getCurrentPrediction(next),
         })
 }
 

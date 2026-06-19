@@ -1,12 +1,11 @@
 {{template "base" .}}
 {{define "content"}}
 <div class="page-header">
-  <h1>➕ Input Result</h1>
-  <p class="subtitle">Masukkan hasil 4D secara manual</p>
+  <h1>➕ Result</h1>
+  <p class="subtitle">Input hasil 4D per sesi · Auto-predict sesi berikutnya</p>
 </div>
 
 {{if .Error}}<div class="alert alert-error">❌ {{.Error}}</div>{{end}}
-{{if .Message}}<div class="alert alert-success">✅ {{.Message}}</div>{{end}}
 
 <div class="card">
   <form method="POST" action="/input">
@@ -28,34 +27,31 @@
       </div>
       <div class="form-group">
         <label>🔢 Nomor 4D</label>
-        <input type="text" name="nomor" placeholder="contoh: 1234"
+        <input type="text" name="nomor" placeholder="1234"
                maxlength="4" pattern="[0-9]{4}" required
-               class="form-input nomor-input"
-               inputmode="numeric"
+               class="form-input nomor-input" inputmode="numeric"
                oninput="this.value=this.value.replace(/[^0-9]/g,'')">
       </div>
     </div>
-    <button type="submit" class="btn btn-primary btn-block">💾 Simpan Result</button>
+    <button type="submit" class="btn btn-primary btn-block">💾 Simpan</button>
   </form>
 </div>
 
 <div class="card">
   <div class="card-title">📋 Input Batch</div>
-  <p class="hint" style="margin-bottom:.75rem">Format tiap baris: <code>YYYY-MM-DD,sesi,nomor4D</code></p>
+  <p class="hint" style="margin-bottom:.75rem">Format: <code>YYYY-MM-DD,sesi,nomor4D</code> per baris</p>
   <form method="POST" action="/input-batch">
-    <textarea name="batch" rows="6" class="form-input mono"
+    <textarea name="batch" rows="5" class="form-input mono"
       placeholder="2026-06-19,1,1234&#10;2026-06-19,2,5678"></textarea>
     <button type="submit" class="btn btn-secondary" style="margin-top:.75rem">📥 Import Batch</button>
   </form>
 </div>
 
 <div class="card">
-  <div class="card-title">📜 Riwayat Result Terakhir</div>
+  <div class="card-title">📜 Riwayat Result</div>
   <div class="table-scroll">
     <table class="data-tbl" id="resultTable">
-      <thead>
-        <tr><th>#</th><th>Tanggal</th><th>Sesi</th><th>4D</th><th>2D</th></tr>
-      </thead>
+      <thead><tr><th>#</th><th>Tanggal</th><th>Sesi</th><th>4D</th><th>2D</th></tr></thead>
       <tbody id="resultBody">
         <tr><td colspan="5" class="td-center muted">Memuat...</td></tr>
       </tbody>
@@ -82,10 +78,6 @@ fetch('/api/results?limit=40')
         '<td><span class="badge badge-green">' + d2 + '</span></td>' +
         '</tr>';
     }).join('');
-  })
-  .catch(function() {
-    document.getElementById('resultBody').innerHTML =
-      '<tr><td colspan="5" class="td-center muted">Gagal memuat</td></tr>';
   });
 </script>
 {{end}}
