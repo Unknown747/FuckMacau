@@ -42,8 +42,6 @@ type D2Stat struct {
         LastSeen    int
         Score       float64
         MarkovScore float64
-        GapScore    float64
-        DowScore    float64
         CorrScore   float64
 }
 
@@ -210,8 +208,6 @@ func initDB() {
 
 type LearnedWeights struct {
         MarkovMult float64
-        GapMult    float64
-        DowMult    float64
         CorrMult   float64
         EvalCount  int
 }
@@ -225,17 +221,15 @@ type CompStatRow struct {
         Active    bool // cukup data untuk tuning
 }
 
-var globalWeights = LearnedWeights{MarkovMult: 1.0, GapMult: 1.0, DowMult: 1.0, CorrMult: 1.0}
+var globalWeights = LearnedWeights{MarkovMult: 1.0, CorrMult: 1.0}
 var globalWeightsMu sync.RWMutex
 
 func loadLearnedWeights() LearnedWeights {
         var lw LearnedWeights
         lw.MarkovMult = 1.0
-        lw.GapMult = 1.0
-        lw.DowMult = 1.0
         lw.CorrMult = 1.0
-        db.QueryRow(`SELECT markov_mult,gap_mult,dow_mult,corr_mult,eval_count FROM component_weights WHERE id=1`).
-                Scan(&lw.MarkovMult, &lw.GapMult, &lw.DowMult, &lw.CorrMult, &lw.EvalCount)
+        db.QueryRow(`SELECT markov_mult,corr_mult,eval_count FROM component_weights WHERE id=1`).
+                Scan(&lw.MarkovMult, &lw.CorrMult, &lw.EvalCount)
         return lw
 }
 
@@ -244,22 +238,20 @@ func retuneWeights() {
         type avg struct{ hit, miss, hitN, missN float64 }
         stats := map[string]*avg{
                 "markov": {},
-                "gap":    {},
-                "dow":    {},
                 "corr":   {},
         }
-        rows, err := db.Query(`SELECT markov_score,gap_score,dow_score,corr_score,is_hit FROM pred_components WHERE is_hit >= 0`)
+        rows, err := db.Query(`SELECT markov_score,corr_score,is_hit FROM pred_components WHERE is_hit >= 0`)
         if err != nil {
                 return
         }
         defer rows.Close()
         total := 0
         for rows.Next() {
-                var m, g, d, c float64
+                var m, c float64
                 var hit int
-                rows.Scan(&m, &g, &d, &c, &hit)
+                rows.Scan(&m, &c, &hit)
                 total++
-                vals := map[string]float64{"markov": m, "gap": g, "dow": d, "corr": c}
+                vals := map[string]float64{"markov": m, "corr": c}
                 for k, v := range vals {
                         if hit == 1 {
                                 stats[k].hit += v
@@ -286,20 +278,17 @@ func retuneWeights() {
                 denom := math.Max(missAvg, 0.01)
                 ratio := hitAvg / denom
                 raw := math.Max(0.4, math.Min(ratio, 2.5))
-                // EMA: 30% baru, 70% lama — perubahan bertahap
                 return math.Round((0.7*cur+0.3*raw)*100) / 100
         }
         cur := loadLearnedWeights()
         newM := calcMult("markov", cur.MarkovMult)
-        newG := calcMult("gap", cur.GapMult)
-        newD := calcMult("dow", cur.DowMult)
         newC := calcMult("corr", cur.CorrMult)
-        db.Exec(`UPDATE component_weights SET markov_mult=?,gap_mult=?,dow_mult=?,corr_mult=?,eval_count=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`,
-                newM, newG, newD, newC, total)
+        db.Exec(`UPDATE component_weights SET markov_mult=?,corr_mult=?,eval_count=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`,
+                newM, newC, total)
         globalWeightsMu.Lock()
-        globalWeights = LearnedWeights{MarkovMult: newM, GapMult: newG, DowMult: newD, CorrMult: newC, EvalCount: total}
+        globalWeights = LearnedWeights{MarkovMult: newM, CorrMult: newC, EvalCount: total}
         globalWeightsMu.Unlock()
-        log.Printf("🎓 Auto-tune: markov×%.2f gap×%.2f dow×%.2f corr×%.2f (%d eval)", newM, newG, newD, newC, total)
+        log.Printf("🎓 Auto-tune: markov×%.2f corr×%.2f (%d eval)", newM, newC, total)
 }
 
 // savePredComponent simpan skor komponen top-1 D2 saat prediksi dibuat
@@ -309,10 +298,10 @@ func savePredComponent(tanggal string, sesi int, stats []D2Stat, bbfs string) {
         }
         top := stats[0]
         db.Exec(`INSERT OR REPLACE INTO pred_components
-                (tanggal,sesi,top_d2,bbfs,markov_score,gap_score,dow_score,corr_score,total_score,is_hit,actual_d2)
-                VALUES (?,?,?,?,?,?,?,?,?,-1,'')`,
+                (tanggal,sesi,top_d2,bbfs,markov_score,corr_score,total_score,is_hit,actual_d2)
+                VALUES (?,?,?,?,?,?,?,-1,'')`,
                 tanggal, sesi, top.D2, bbfs,
-                top.MarkovScore, top.GapScore, top.DowScore, top.CorrScore, top.Score)
+                top.MarkovScore, top.CorrScore, top.Score)
 }
 
 // evalPrediction: saat result masuk, tandai prediksi sesi itu HIT/MISS
@@ -348,34 +337,30 @@ func evalPrediction(tanggal string, sesi int, actualNomor string) {
 func getCompStats() []CompStatRow {
         type avg struct{ hit, miss, hitN, missN float64 }
         stats := map[string]*avg{
-                "Markov": {}, "Gap": {}, "DOW": {}, "Corr": {},
+                "Markov": {}, "Corr": {},
         }
-        rows, err := db.Query(`SELECT markov_score,gap_score,dow_score,corr_score,is_hit FROM pred_components WHERE is_hit >= 0`)
+        rows, err := db.Query(`SELECT markov_score,corr_score,is_hit FROM pred_components WHERE is_hit >= 0`)
         if err != nil {
                 return nil
         }
         defer rows.Close()
         total := 0
         for rows.Next() {
-                var m, g, d, c float64
+                var m, c float64
                 var hit int
-                rows.Scan(&m, &g, &d, &c, &hit)
+                rows.Scan(&m, &c, &hit)
                 total++
                 if hit == 1 {
                         stats["Markov"].hit += m; stats["Markov"].hitN++
-                        stats["Gap"].hit += g; stats["Gap"].hitN++
-                        stats["DOW"].hit += d; stats["DOW"].hitN++
                         stats["Corr"].hit += c; stats["Corr"].hitN++
                 } else {
                         stats["Markov"].miss += m; stats["Markov"].missN++
-                        stats["Gap"].miss += g; stats["Gap"].missN++
-                        stats["DOW"].miss += d; stats["DOW"].missN++
                         stats["Corr"].miss += c; stats["Corr"].missN++
                 }
         }
         lw := loadLearnedWeights()
-        mults := map[string]float64{"Markov": lw.MarkovMult, "Gap": lw.GapMult, "DOW": lw.DowMult, "Corr": lw.CorrMult}
-        order := []string{"Markov", "Gap", "DOW", "Corr"}
+        mults := map[string]float64{"Markov": lw.MarkovMult, "Corr": lw.CorrMult}
+        order := []string{"Markov", "Corr"}
         var result []CompStatRow
         for _, name := range order {
                 s := stats[name]
@@ -1057,72 +1042,6 @@ func adaptiveWindow(entries []rawEntry, targetSesi int, now time.Time) int {
         return bestWindow
 }
 
-// ── Upgrade 5: Pola Hari dalam Seminggu ──────────────────────────────────────
-// 2D yang sering muncul di hari-yang-sama-minggu-lalu mendapat bobot lebih.
-func dowPattern(entries []rawEntry, targetSesi int, now time.Time) map[string]float64 {
-        targetDow := now.Weekday()
-        counts := map[string]float64{}
-        total := 0.0
-        for _, e := range entries {
-                if e.sesi != targetSesi || len(e.nomor) < 4 {
-                        continue
-                }
-                t, err := time.Parse("2006-01-02", e.tanggal)
-                if err != nil || t.Weekday() != targetDow {
-                        continue
-                }
-                counts[e.nomor[2:4]]++
-                total++
-        }
-        if total == 0 {
-                return counts
-        }
-        for d2 := range counts {
-                counts[d2] /= total
-        }
-        return counts
-}
-
-// ── Upgrade 6: Consecutive Gap Analysis ──────────────────────────────────────
-// Lebih presisi dari dueGapBonus: bandingkan gap sekarang dengan rata-rata
-// gap historis. Jika gap sekarang >> rata-rata → overdue → bonus besar.
-func gapAnalysis(sesiOnly []string, d2 string) float64 {
-        var positions []int
-        for i, s := range sesiOnly {
-                if s == d2 {
-                        positions = append(positions, i)
-                }
-        }
-        if len(positions) == 0 {
-                return 4.0 // belum pernah muncul → bonus eksplorasi
-        }
-        currentGap := len(sesiOnly) - positions[len(positions)-1]
-        if len(positions) == 1 {
-                return math.Min(float64(currentGap)*0.4, 6.0)
-        }
-        // Hitung rata-rata gap antar kemunculan
-        avgGap := 0.0
-        for i := 1; i < len(positions); i++ {
-                avgGap += float64(positions[i] - positions[i-1])
-        }
-        avgGap /= float64(len(positions) - 1)
-        if avgGap <= 0 {
-                return 0
-        }
-        ratio := float64(currentGap) / avgGap
-        switch {
-        case ratio >= 3.0:
-                return math.Min(ratio*3.5, 18.0) // sangat overdue
-        case ratio >= 2.0:
-                return ratio * 2.5
-        case ratio >= 1.2:
-                return ratio * 1.5
-        case ratio >= 0.8:
-                return 1.0 // sekitar normal
-        default:
-                return math.Max(ratio*0.4, 0.1) // baru muncul
-        }
-}
 
 // abCorrelation: 2 digit depan (AB) sesi sebelumnya → CD apa yang sering muncul di targetSesi
 func abCorrelation(entries []rawEntry, targetSesi int) map[string]float64 {
@@ -1214,8 +1133,6 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 lastSesiIdx int
                 markov      float64
                 streak      float64
-                gap         float64 // Upgrade 6: gapAnalysis (menggantikan due)
-                dow         float64 // Upgrade 5: day-of-week pattern
                 corr        float64 // Upgrade 2: digit pair correlation
         }
         stats := map[string]*stat{}
@@ -1287,38 +1204,10 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
         }
 
-        // ── Streak & Gap Analysis (Upgrade 6) ────────────────────────────────────
-        seenD2 := map[string]bool{}
+        // ── Streak Analysis ───────────────────────────────────────────────────────
         for _, d2 := range sesiOnly {
-                seenD2[d2] = true
-        }
-        for d2 := range seenD2 {
                 ensure(d2)
                 stats[d2].streak = streakBonus(sesiOnly, d2)
-                stats[d2].gap = gapAnalysis(sesiOnly, d2) // gantikan dueGapBonus
-        }
-        // D2 yang belum pernah muncul di sesi ini → bonus eksplorasi dari gapAnalysis
-        for _, d := range []string{
-                "00","01","02","03","04","05","06","07","08","09",
-                "10","11","12","13","14","15","16","17","18","19",
-                "20","21","22","23","24","25","26","27","28","29",
-                "30","31","32","33","34","35","36","37","38","39",
-                "40","41","42","43","44","45","46","47","48","49",
-                "50","51","52","53","54","55","56","57","58","59",
-                "60","61","62","63","64","65","66","67","68","69",
-                "70","71","72","73","74","75","76","77","78","79",
-                "80","81","82","83","84","85","86","87","88","89",
-                "90","91","92","93","94","95","96","97","98","99"} {
-                if !seenD2[d] {
-                        ensure(d)
-                        stats[d].gap = gapAnalysis(sesiOnly, d) // akan return 4.0
-                }
-        }
-
-        // ── Upgrade 5: Day-of-Week pattern ───────────────────────────────────────
-        for d2, score := range dowPattern(allEntries, targetSesi, now) {
-                ensure(d2)
-                stats[d2].dow = score
         }
 
         // ── Markov: umum + sesi-to-sesi + self + lintas sesi + periodik ──────────
@@ -1396,7 +1285,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
         // ── Gabungkan semua komponen ke skor akhir ────────────────────────────────
         var list []D2Stat
         for d2, s := range stats {
-                if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 && s.corr < 0.05 && s.dow < 0.05 {
+                if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 && s.corr < 0.05 {
                         continue
                 }
                 // Formula: sesiFreq (auto-bobot) + allFreq + markov + streak
@@ -1409,8 +1298,6 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         s.allFreq*1.5 +
                         s.markov*gw.MarkovMult +
                         s.streak +
-                        s.gap*0.9*gw.GapMult +
-                        s.dow*4.5*gw.DowMult +
                         s.corr*5.5*gw.CorrMult
                 lastSeen := s.lastIdx
                 if s.lastSesiIdx < lastSeen {
@@ -1423,8 +1310,6 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         LastSeen:    lastSeen,
                         Score:       score,
                         MarkovScore: s.markov,
-                        GapScore:    s.gap,
-                        DowScore:    s.dow,
                         CorrScore:   s.corr,
                 })
         }

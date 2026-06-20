@@ -1,4 +1,5 @@
 - [BBFS 6-digit migration](bbfs-6digit.md) — BBFS diperluas 5→6 digit; DB lama 5-digit harus dideteksi dan di-regenerate saat predictHandler.
+- [Removed components](removed-ai-components.md) — Gap/Overdue (gambler's fallacy) dan DOW (noise) dihapus dari semua lapisan: struct, query, formula, template.
 - [Recency bias reduction](recency-bias.md) — allFreq weight dipotong 8→4, sesiFreq 10→5.5 untuk distribusi prediksi lebih merata.
 - [BBFS-B Multi-set strategy](bbfs-multiset.md) — BBFS2 menggunakan penalti pasang yang sudah dicakup BBFS-A (×0.1 jika keduanya ada di A, ×0.6 jika satu digit ada).
 - [AB Correlation analysis](ab-correlation.md) — abCorrelation() mencari CD yang muncul setelah AB sesi sebelumnya, disimpan ke stats[d2].corr += score × 3.5.

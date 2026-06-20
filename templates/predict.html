@@ -136,8 +136,6 @@
         <th style="text-align:left;padding:.4rem .5rem">2D</th>
         <th style="text-align:right;padding:.4rem .5rem">Skor</th>
         <th style="text-align:right;padding:.4rem .5rem">Markov</th>
-        <th style="text-align:right;padding:.4rem .5rem">Gap</th>
-        <th style="text-align:right;padding:.4rem .5rem">DOW</th>
         <th style="text-align:right;padding:.4rem .5rem">Corr+AB</th>
         <th style="text-align:right;padding:.4rem .5rem">Sesi</th>
       </tr>
@@ -148,8 +146,6 @@
       <td style="padding:.4rem .5rem;font-weight:700;color:{{colorOf .D2}}">{{.D2}}</td>
       <td style="text-align:right;padding:.4rem .5rem;color:#e2e8f0">{{printf "%.1f" .Score}}</td>
       <td style="text-align:right;padding:.4rem .5rem;color:#90cdf4">{{printf "%.2f" .MarkovScore}}</td>
-      <td style="text-align:right;padding:.4rem .5rem;color:{{if gt .GapScore 6.0}}#f6ad55{{else}}#718096{{end}}">{{printf "%.2f" .GapScore}}</td>
-      <td style="text-align:right;padding:.4rem .5rem;color:{{if gt .DowScore 0.05}}#9ae6b4{{else}}#718096{{end}}">{{printf "%.2f" .DowScore}}</td>
       <td style="text-align:right;padding:.4rem .5rem;color:{{if gt .CorrScore 0.05}}#b794f4{{else}}#718096{{end}}">{{printf "%.2f" .CorrScore}}</td>
       <td style="text-align:right;padding:.4rem .5rem;color:#4fd1c5">{{.SesiFreq}}x</td>
     </tr>
@@ -159,8 +155,6 @@
   </div>
   <div style="margin-top:.6rem;font-size:.7rem;color:#4a5568;line-height:1.6">
     <strong style="color:#718096">Markov</strong> = pola transisi antar sesi &nbsp;·&nbsp;
-    <strong style="color:#718096">Gap</strong> = overdue analysis &nbsp;·&nbsp;
-    <strong style="color:#718096">DOW</strong> = pola hari-dalam-seminggu &nbsp;·&nbsp;
     <strong style="color:#718096">Corr+AB</strong> = korelasi digit posisi + pola AB→CD
   </div>
 </div>
