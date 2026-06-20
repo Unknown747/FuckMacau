@@ -589,7 +589,11 @@ func getBBFSValidations(limit int) []BBFSValidation {
 }
 
 func calcWinRate() WinRate {
-        rows, err := db.Query(`SELECT tanggal, sesi, digits FROM bbfs_preds`)
+        rows, err := db.Query(`
+                SELECT bp.tanggal, bp.sesi, bp.digits
+                FROM bbfs_preds bp
+                INNER JOIN results r ON r.tanggal=bp.tanggal AND r.sesi=bp.sesi
+                WHERE bp.source='AI-LOKAL'`)
         if err != nil {
                 return WinRate{}
         }
@@ -602,10 +606,8 @@ func calcWinRate() WinRate {
                 rows.Scan(&tanggal, &sesi, &digits)
 
                 var nomor string
-                err := db.QueryRow(
-                        `SELECT nomor FROM results WHERE tanggal=? AND sesi=?`,
-                        tanggal, sesi).Scan(&nomor)
-                if err != nil || len(nomor) < 4 {
+                db.QueryRow(`SELECT nomor FROM results WHERE tanggal=? AND sesi=?`, tanggal, sesi).Scan(&nomor)
+                if len(nomor) < 4 {
                         continue
                 }
                 total++
@@ -2028,11 +2030,22 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func backtestHandler(w http.ResponseWriter, r *http.Request) {
+        // Pre-compute top 2D per sesi SEBELUM membuka query utama (hindari konflik koneksi SQLite)
+        topD2BySesi := map[int]string{}
+        for s := 1; s <= 6; s++ {
+                st := analyzeD2Enhanced(s)
+                if len(st) > 0 {
+                        topD2BySesi[s] = st[0].D2
+                }
+        }
+
+        // Ambil semua prediksi AI-LOKAL yang sudah ada result-nya, join langsung
         rows, err := db.Query(`
-                SELECT pc.tanggal, pc.sesi, pc.bbfs, pc.top_d2, pc.is_hit, pc.actual_d2
-                FROM pred_components pc
-                WHERE pc.is_hit >= 0
-                ORDER BY pc.tanggal ASC, pc.sesi ASC`)
+                SELECT bp.tanggal, bp.sesi, bp.digits, r.nomor
+                FROM bbfs_preds bp
+                INNER JOIN results r ON r.tanggal = bp.tanggal AND r.sesi = bp.sesi
+                WHERE bp.source = 'AI-LOKAL'
+                ORDER BY bp.tanggal ASC, bp.sesi ASC`)
         if err != nil {
                 http.Error(w, "DB error: "+err.Error(), 500)
                 return
@@ -2042,20 +2055,31 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
         var list []BacktestRow
         total, hits := 0, 0
         for rows.Next() {
-                var row BacktestRow
-                var isHitInt int
-                rows.Scan(&row.Tanggal, &row.Sesi, &row.BBFS, &row.TopD2, &isHitInt, &row.ActualD2)
-                row.IsHit = isHitInt == 1
+                var tanggal, digits, nomor string
+                var sesi int
+                rows.Scan(&tanggal, &sesi, &digits, &nomor)
+
+                if len(nomor) < 4 || len(digits) < 5 {
+                        continue
+                }
+                actualD2 := nomor[2:4]
+                hit := isHit(digits, actualD2)
+
                 total++
-                if row.IsHit {
+                if hit {
                         hits++
                 }
-                row.RunTotal = total
-                row.RunHits = hits
-                if total > 0 {
-                        row.RunPct = hits * 100 / total
-                }
-                list = append(list, row)
+                list = append(list, BacktestRow{
+                        Tanggal:  tanggal,
+                        Sesi:     sesi,
+                        BBFS:     digits,
+                        TopD2:    topD2BySesi[sesi],
+                        IsHit:    hit,
+                        ActualD2: actualD2,
+                        RunTotal: total,
+                        RunHits:  hits,
+                        RunPct:   hits * 100 / total,
+                })
         }
 
         // Balik urutan: terbaru di atas
@@ -2134,6 +2158,34 @@ func seedPredictions() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// migrateBBFS5to6 upgrade semua entry bbfs_preds 5-digit → 6-digit menggunakan algoritma baru
+func migrateBBFS5to6() {
+        rows, err := db.Query(`SELECT id, sesi FROM bbfs_preds WHERE source='AI-LOKAL' AND LENGTH(digits)=5`)
+        if err != nil {
+                return
+        }
+        type entry struct{ id, sesi int }
+        var entries []entry
+        for rows.Next() {
+                var e entry
+                rows.Scan(&e.id, &e.sesi)
+                entries = append(entries, e)
+        }
+        rows.Close()
+        if len(entries) == 0 {
+                return
+        }
+        log.Printf("Migrasi %d entri BBFS 5-digit → 6-digit...", len(entries))
+        for _, e := range entries {
+                stats := analyzeD2Enhanced(e.sesi)
+                newDigits := buildBBFSFromStats(stats)
+                if len(newDigits) >= 6 {
+                        db.Exec(`UPDATE bbfs_preds SET digits=? WHERE id=?`, newDigits, e.id)
+                }
+        }
+        log.Printf("Migrasi BBFS selesai.")
+}
+
 func main() {
         initDB()
         // Load learned weights ke memori supaya analyzeD2Enhanced bisa pakai
@@ -2141,6 +2193,7 @@ func main() {
         globalWeights = loadLearnedWeights()
         globalWeightsMu.Unlock()
         seedPredictions()
+        migrateBBFS5to6()
         loadTemplates()
 
         mux := http.NewServeMux()
