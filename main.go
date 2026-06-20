@@ -111,12 +111,25 @@ type Stats struct {
         Total int
 }
 
+type BacktestRow struct {
+        Tanggal  string
+        Sesi     int
+        BBFS     string
+        TopD2    string
+        IsHit    bool
+        ActualD2 string
+        RunTotal int
+        RunHits  int
+        RunPct   int
+}
+
 type PageData struct {
         Results           []Result
         Predictions       []Prediction
         PaitoRows         []PaitoRow
         FreqItems         []FreqItem
         BBFS              *BBFSResult
+        BBFS2             *BBFSResult
         Error             string
         Message           string
         CurrentDate       string
@@ -132,6 +145,7 @@ type PageData struct {
         CurrentPrediction *Prediction
         CompStats         []CompStatRow
         LearnedWeights    LearnedWeights
+        BacktestRows      []BacktestRow
 }
 
 // ── DB ────────────────────────────────────────────────────────────────────────
@@ -446,16 +460,17 @@ func generateBBFS(input string) *BBFSResult {
                         seen[s] = true
                         digits = append(digits, s)
                 }
-                if len(digits) == 5 {
+                if len(digits) == 6 {
                         break
                 }
         }
         if len(digits) < 5 {
                 return nil
         }
+        n := len(digits)
         var pairs []string
-        for i := 0; i < 5; i++ {
-                for j := 0; j < 5; j++ {
+        for i := 0; i < n; i++ {
+                for j := 0; j < n; j++ {
                         if i != j {
                                 pairs = append(pairs, digits[i]+digits[j])
                         }
@@ -520,18 +535,24 @@ func saveOrUpdatePrediction(tanggal string, sesi int, digits, source string) {
 func autoPredict(tanggal string, sesi int) string {
         nextDate, nextSesi := nextSessionAfter(tanggal, sesi)
 
-        // autoPredict boleh UPDATE prediksi sesi berikutnya karena result belum ada
-        // (prediksi untuk sesi yang BELUM ada result-nya)
         stats := analyzeD2Enhanced(nextSesi)
         bbfs := buildBBFSFromStats(stats)
         if len(bbfs) < 5 {
                 return ""
         }
+        bbfs2 := buildBBFS2FromStats(stats, bbfs)
 
         saveOrUpdatePrediction(nextDate, nextSesi, bbfs, "AI-LOKAL")
+        if len(bbfs2) >= 5 {
+                saveOrUpdatePrediction(nextDate, nextSesi, bbfs2, "AI-LOKAL-2")
+        }
         savePredComponent(nextDate, nextSesi, stats, bbfs)
 
-        return fmt.Sprintf("Auto-prediksi Sesi %d (%s): BBFS %s", nextSesi, nextDate, bbfs)
+        msg := fmt.Sprintf("Auto-prediksi Sesi %d (%s): BBFS-A %s", nextSesi, nextDate, bbfs)
+        if len(bbfs2) >= 5 {
+                msg += " | BBFS-B " + bbfs2
+        }
+        return msg
 }
 
 func getBBFSValidations(limit int) []BBFSValidation {
@@ -1103,6 +1124,63 @@ func gapAnalysis(sesiOnly []string, d2 string) float64 {
         }
 }
 
+// abCorrelation: 2 digit depan (AB) sesi sebelumnya → CD apa yang sering muncul di targetSesi
+func abCorrelation(entries []rawEntry, targetSesi int) map[string]float64 {
+        now := nowWIB()
+        prevSesi := targetSesi - 1
+        if prevSesi < 1 {
+                prevSesi = 6
+        }
+        // Cari AB terakhir dari sesi sebelumnya
+        lastAB := ""
+        for i := len(entries) - 1; i >= 0; i-- {
+                if entries[i].sesi == prevSesi && len(entries[i].nomor) >= 4 {
+                        lastAB = entries[i].nomor[0:2]
+                        break
+                }
+        }
+        if lastAB == "" {
+                return nil
+        }
+        scores := map[string]float64{}
+        total := 0.0
+        // Hitung: saat prevSesi punya AB=lastAB, CD apa yang muncul di targetSesi hari itu?
+        for _, pe := range entries {
+                if pe.sesi != prevSesi || len(pe.nomor) < 4 || pe.nomor[0:2] != lastAB {
+                        continue
+                }
+                peDate, err := time.Parse("2006-01-02", pe.tanggal)
+                if err != nil {
+                        continue
+                }
+                for _, ne := range entries {
+                        if ne.sesi != targetSesi || len(ne.nomor) < 4 {
+                                continue
+                        }
+                        neDate, err2 := time.Parse("2006-01-02", ne.tanggal)
+                        if err2 != nil {
+                                continue
+                        }
+                        diff := neDate.Sub(peDate).Hours() / 24
+                        if diff < 0 || diff > 1 {
+                                continue
+                        }
+                        age := now.Sub(peDate).Hours() / 24
+                        w := math.Exp(-age/35.0)*2.5 + 0.2
+                        scores[ne.nomor[2:4]] += w
+                        total += w
+                        break
+                }
+        }
+        if total < 0.1 {
+                return nil
+        }
+        for d2 := range scores {
+                scores[d2] /= total
+        }
+        return scores
+}
+
 func analyzeD2Enhanced(targetSesi int) []D2Stat {
         now := nowWIB()
         allEntries := getAllResults()
@@ -1147,7 +1225,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
         }
 
-        // Frekuensi semua sesi — decay tajam: 7 hari terakhir × 8, sisanya turun cepat
+        // Frekuensi semua sesi — decay lebih smooth, kurangi bias ekstrim jangka pendek
         for i, e := range allEntries {
                 if len(e.nomor) < 4 {
                         continue
@@ -1160,11 +1238,11 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         age := now.Sub(t).Hours() / 24
                         switch {
                         case age <= 7:
-                                weight = 8.0 - age*0.5 // 8.0 → 4.5 dalam 7 hari
+                                weight = 4.0 - age*0.1 // 4.0 → 3.3 dalam 7 hari (sebelumnya 8→4.5)
                         case age <= 30:
-                                weight = math.Exp(-age/15.0)*3.0 + 0.3
+                                weight = math.Exp(-age/18.0)*2.5 + 0.3
                         default:
-                                weight = math.Exp(-age/45.0)*1.0 + 0.2
+                                weight = math.Exp(-age/50.0)*1.2 + 0.2
                         }
                 }
                 stats[d2].allFreq += weight
@@ -1196,11 +1274,11 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         age := now.Sub(t).Hours() / 24
                         switch {
                         case age <= 7:
-                                weight = 10.0 - age*0.6 // bobot sangat tinggi untuk 7 hari terakhir
+                                weight = 5.5 - age*0.2 // 5.5 → 4.1 dalam 7 hari (sebelumnya 10→5.8)
                         case age <= 21:
-                                weight = math.Exp(-age/10.0)*5.0 + 0.4
+                                weight = math.Exp(-age/12.0)*3.5 + 0.4
                         default:
-                                weight = math.Exp(-age/30.0)*2.0 + 0.2
+                                weight = math.Exp(-age/35.0)*2.0 + 0.2
                         }
                 }
                 stats[d2].sesiFreq += weight
@@ -1307,6 +1385,12 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
         for d2, score := range digitPairCorrelation(allEntries, targetSesi) {
                 ensure(d2)
                 stats[d2].corr = score
+        }
+
+        // ── Upgrade 7: AB Correlation — CD setelah pola AB sesi sebelumnya ────────
+        for d2, score := range abCorrelation(allEntries, targetSesi) {
+                ensure(d2)
+                stats[d2].corr += score * 3.5
         }
 
         // ── Gabungkan semua komponen ke skor akhir ────────────────────────────────
@@ -1469,7 +1553,7 @@ func buildBBFSFromStats(stats []D2Stat) string {
 
         allDigits := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 
-        // Exhaustive search C(10,5) = 252 kombinasi
+        // Exhaustive search C(10,6) = 210 kombinasi — coverage 30 pasangan per set
         bestScore := -1.0
         bestCombo := []string{}
 
@@ -1478,22 +1562,24 @@ func buildBBFSFromStats(stats []D2Stat) string {
                         for k := j + 1; k < 10; k++ {
                                 for l := k + 1; l < 10; l++ {
                                         for m := l + 1; m < 10; m++ {
-                                                combo := []string{
-                                                        allDigits[i], allDigits[j], allDigits[k],
-                                                        allDigits[l], allDigits[m],
-                                                }
-                                                // Hitung total skor semua 20 pasangan D2 dari 5 digit ini
-                                                score := 0.0
-                                                for _, d1 := range combo {
-                                                        for _, d2 := range combo {
-                                                                if d1 != d2 {
-                                                                        score += pairScore[d1+d2]
+                                                for n := m + 1; n < 10; n++ {
+                                                        combo := []string{
+                                                                allDigits[i], allDigits[j], allDigits[k],
+                                                                allDigits[l], allDigits[m], allDigits[n],
+                                                        }
+                                                        // Hitung total skor semua 30 pasangan D2 dari 6 digit ini
+                                                        score := 0.0
+                                                        for _, d1 := range combo {
+                                                                for _, d2 := range combo {
+                                                                        if d1 != d2 {
+                                                                                score += pairScore[d1+d2]
+                                                                        }
                                                                 }
                                                         }
-                                                }
-                                                if score > bestScore {
-                                                        bestScore = score
-                                                        bestCombo = combo
+                                                        if score > bestScore {
+                                                                bestScore = score
+                                                                bestCombo = combo
+                                                        }
                                                 }
                                         }
                                 }
@@ -1502,7 +1588,7 @@ func buildBBFSFromStats(stats []D2Stat) string {
         }
 
         if len(bestCombo) == 0 {
-                // Fallback: ambil 5 digit dengan kontribusi tertinggi
+                // Fallback: ambil 6 digit dengan kontribusi tertinggi
                 type kv struct {
                         d string
                         v float64
@@ -1514,7 +1600,7 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 sort.Slice(sorted, func(i, j int) bool { return sorted[i].v > sorted[j].v })
                 for _, kv := range sorted {
                         bestCombo = append(bestCombo, kv.d)
-                        if len(bestCombo) == 5 {
+                        if len(bestCombo) == 6 {
                                 break
                         }
                 }
@@ -1525,6 +1611,91 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 return digitContrib[bestCombo[i]] > digitContrib[bestCombo[j]]
         })
 
+        return strings.Join(bestCombo, "")
+}
+
+// buildBBFS2FromStats: BBFS kedua dengan penalti pair yang sudah tercakup BBFS-A
+// Memastikan BBFS-B punya digit berbeda untuk coverage lebih luas
+func buildBBFS2FromStats(stats []D2Stat, firstDigits string) string {
+        if len(stats) == 0 {
+                return ""
+        }
+        // Buat pairScore dengan penalti pair yang kedua digitnya sudah ada di BBFS-A
+        pairScore := map[string]float64{}
+        for _, s := range stats {
+                score := s.Score
+                inFirst0 := strings.ContainsRune(firstDigits, rune(s.D2[0]))
+                inFirst1 := strings.ContainsRune(firstDigits, rune(s.D2[1]))
+                if inFirst0 && inFirst1 {
+                        score *= 0.1 // sangat kecilkan — sudah tercakup BBFS-A
+                } else if inFirst0 || inFirst1 {
+                        score *= 0.6 // sedikit penalti — setengah sudah tercakup
+                }
+                pairScore[s.D2] = score
+        }
+
+        digitContrib := map[string]float64{}
+        for pair, score := range pairScore {
+                if len(pair) == 2 {
+                        digitContrib[string(pair[0])] += score
+                        digitContrib[string(pair[1])] += score
+                }
+        }
+
+        allDigits := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+        bestScore := -1.0
+        bestCombo := []string{}
+
+        for i := 0; i < 10; i++ {
+                for j := i + 1; j < 10; j++ {
+                        for k := j + 1; k < 10; k++ {
+                                for l := k + 1; l < 10; l++ {
+                                        for m := l + 1; m < 10; m++ {
+                                                for n := m + 1; n < 10; n++ {
+                                                        combo := []string{
+                                                                allDigits[i], allDigits[j], allDigits[k],
+                                                                allDigits[l], allDigits[m], allDigits[n],
+                                                        }
+                                                        score := 0.0
+                                                        for _, d1 := range combo {
+                                                                for _, d2 := range combo {
+                                                                        if d1 != d2 {
+                                                                                score += pairScore[d1+d2]
+                                                                        }
+                                                                }
+                                                        }
+                                                        if score > bestScore {
+                                                                bestScore = score
+                                                                bestCombo = combo
+                                                        }
+                                                }
+                                        }
+                                }
+                        }
+                }
+        }
+
+        if len(bestCombo) == 0 {
+                type kv struct {
+                        d string
+                        v float64
+                }
+                var sorted []kv
+                for d, v := range digitContrib {
+                        sorted = append(sorted, kv{d, v})
+                }
+                sort.Slice(sorted, func(i, j int) bool { return sorted[i].v > sorted[j].v })
+                for _, kv := range sorted {
+                        bestCombo = append(bestCombo, kv.d)
+                        if len(bestCombo) == 6 {
+                                break
+                        }
+                }
+        }
+
+        sort.Slice(bestCombo, func(i, j int) bool {
+                return digitContrib[bestCombo[i]] > digitContrib[bestCombo[j]]
+        })
         return strings.Join(bestCombo, "")
 }
 
@@ -1634,7 +1805,7 @@ func newFuncMap() template.FuncMap {
 }
 
 func loadTemplates() {
-        pages := []string{"index", "input", "paito", "predict", "stats"}
+        pages := []string{"index", "input", "paito", "predict", "stats", "backtest"}
         tmpls = make(map[string]*template.Template, len(pages))
         for _, p := range pages {
                 t, err := template.New("").Funcs(newFuncMap()).ParseFiles(
@@ -1912,11 +2083,13 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
         }
 
         var bbfs string
-        if pred != nil {
+        if pred != nil && len(pred.BBFS) >= 6 {
+                // Entry DB sudah 6 digit — pakai langsung
                 bbfs = pred.BBFS
                 pred.Top2D = top10
                 pred.Alasan = buildAlasan(top10, next)
         } else {
+                // Entry tidak ada ATAU masih 5 digit lama → regenerate dengan algoritma baru (6 digit)
                 bbfs = buildBBFSFromStats(paitoStats)
                 if len(bbfs) >= 5 {
                         savePrediction(today, next, bbfs, "AI-LOKAL")
@@ -1930,6 +2103,16 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                 }
         }
 
+        // Load BBFS2 (set alternatif)
+        var bbfs2 string
+        db.QueryRow(`SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL-2'`, today, next).Scan(&bbfs2)
+        if len(bbfs2) < 5 && len(bbfs) >= 5 {
+                bbfs2 = buildBBFS2FromStats(paitoStats, bbfs)
+                if len(bbfs2) >= 5 {
+                        savePrediction(today, next, bbfs2, "AI-LOKAL-2")
+                }
+        }
+
         data := PageData{
                 CurrentDate: today,
                 NextSesi:    next,
@@ -1940,8 +2123,54 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
         if len(bbfs) >= 5 {
                 data.BBFS = generateBBFS(bbfs)
         }
+        if len(bbfs2) >= 5 {
+                data.BBFS2 = generateBBFS(bbfs2)
+        }
 
         render(w, "predict", data)
+}
+
+func backtestHandler(w http.ResponseWriter, r *http.Request) {
+        rows, err := db.Query(`
+                SELECT pc.tanggal, pc.sesi, pc.bbfs, pc.top_d2, pc.is_hit, pc.actual_d2
+                FROM pred_components pc
+                WHERE pc.is_hit >= 0
+                ORDER BY pc.tanggal ASC, pc.sesi ASC`)
+        if err != nil {
+                http.Error(w, "DB error: "+err.Error(), 500)
+                return
+        }
+        defer rows.Close()
+
+        var list []BacktestRow
+        total, hits := 0, 0
+        for rows.Next() {
+                var row BacktestRow
+                var isHitInt int
+                rows.Scan(&row.Tanggal, &row.Sesi, &row.BBFS, &row.TopD2, &isHitInt, &row.ActualD2)
+                row.IsHit = isHitInt == 1
+                total++
+                if row.IsHit {
+                        hits++
+                }
+                row.RunTotal = total
+                row.RunHits = hits
+                if total > 0 {
+                        row.RunPct = hits * 100 / total
+                }
+                list = append(list, row)
+        }
+
+        // Balik urutan: terbaru di atas
+        for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
+                list[i], list[j] = list[j], list[i]
+        }
+
+        wr := WinRate{Total: total, Hits: hits, Miss: total - hits}
+        if total > 0 {
+                wr.Pct = hits * 100 / total
+        }
+        render(w, "backtest", PageData{WR: wr, BacktestRows: list})
 }
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {
@@ -2024,6 +2253,7 @@ func main() {
         mux.HandleFunc("/paito", paitoHandler)
         mux.HandleFunc("/predict", predictHandler)
         mux.HandleFunc("/stats", statsHandler)
+        mux.HandleFunc("/backtest", backtestHandler)
         mux.HandleFunc("/api/results", apiResultsHandler)
         mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 

@@ -13,15 +13,28 @@
   <span class="badge badge-AILOKAL">AI-LOKAL</span>
 </div>
 
-{{/* ── BBFS Besar ── */}}
+{{/* ── BBFS-A Utama ── */}}
 {{if .BBFSList}}
 <div class="card" style="background:linear-gradient(160deg,#0a1628,#0d1220);border-color:#1a3a5c;text-align:center;padding:1.25rem 1rem" id="bbfsCard">
-  <div style="font-size:.68rem;color:#637087;text-transform:uppercase;letter-spacing:.7px;margin-bottom:.6rem">🔢 BBFS 5 Digit</div>
+  <div style="font-size:.68rem;color:#637087;text-transform:uppercase;letter-spacing:.7px;margin-bottom:.6rem">🔢 BBFS-A · 6 Digit</div>
   <div class="bbfs-digits-row" style="justify-content:center;gap:.6rem">
     {{range .BBFSList}}<span class="bbfs-digit-big" style="border-color:#2b6cb0;color:#90e0ff;text-shadow:0 0 14px #90e0ff55;cursor:pointer" onclick="playTone()">{{.}}</span>{{end}}
   </div>
   <div style="margin-top:.8rem;font-size:.77rem;color:#3d5880">
-    Tap digit untuk suara · Prediksi <strong style="color:#fbd38d">fix</strong> · dihitung otomatis saat result sebelumnya diinput
+    Tap digit untuk suara · 30 kombinasi 2D · Coverage <strong style="color:#fbd38d">30%</strong>
+  </div>
+</div>
+{{end}}
+
+{{/* ── BBFS-B Alternatif ── */}}
+{{if $.BBFS2}}
+<div class="card" style="background:linear-gradient(160deg,#0d0a1a,#100d20);border-color:#553c9a;text-align:center;padding:1rem" id="bbfs2Card">
+  <div style="font-size:.68rem;color:#805ad5;text-transform:uppercase;letter-spacing:.7px;margin-bottom:.6rem">🔮 BBFS-B · Alternatif · 6 Digit</div>
+  <div class="bbfs-digits-row" style="justify-content:center;gap:.6rem">
+    {{range $.BBFS2.DigitList}}<span class="bbfs-digit-big" style="border-color:#553c9a;color:#b794f4;text-shadow:0 0 14px #b794f455">{{.}}</span>{{end}}
+  </div>
+  <div style="margin-top:.6rem;font-size:.73rem;color:#44337a">
+    Set digit berbeda dari BBFS-A · 30 kombinasi · +Coverage
   </div>
 </div>
 {{end}}
@@ -31,40 +44,43 @@
 <div class="card">
   <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem">
     <span>🎯 Top 2D — Sesi {{$.NextSesi}}</span>
-    {{if .BBFS}}<span style="font-size:.68rem;color:#637087;font-weight:400">🔢 <span style="color:#90e0ff">{{.BBFS.Digits}}</span> = BBFS aktif</span>{{end}}
+    {{if .BBFS}}<span style="font-size:.68rem;color:#637087;font-weight:400">🔢 <span style="color:#90e0ff">{{.BBFS}}</span> = BBFS-A</span>{{end}}
   </div>
   <div class="d2-grid">
     {{range .Top2D}}
-    {{$inBBFS := false}}
-    {{if $.BBFS}}{{$inBBFS = hasPair $.BBFS.Pairs2D .D2}}{{end}}
-    <div class="d2-item" style="border-color:{{colorOf .D2}}{{if $inBBFS}};box-shadow:0 0 0 1px #2b6cb055{{end}}">
+    {{$inA := false}}{{$inB := false}}
+    {{if $.BBFS}}{{$inA = hasPair $.BBFS.Pairs2D .D2}}{{end}}
+    {{if $.BBFS2}}{{$inB = hasPair $.BBFS2.Pairs2D .D2}}{{end}}
+    <div class="d2-item" style="border-color:{{colorOf .D2}}{{if $inA}};box-shadow:0 0 0 1px #2b6cb055{{else if $inB}};box-shadow:0 0 0 1px #55309055{{end}}">
       <div class="d2-val" style="color:{{colorOf .D2}}">{{.D2}}</div>
       {{if .SesiFreq}}<div class="d2-meta">Sesi: {{.SesiFreq}}x</div>{{end}}
-      {{if $inBBFS}}<div class="d2-due" style="background:#1a3a5c22;color:#90e0ff;border-color:#2b6cb044">✓ BBFS</div>
+      {{if $inA}}<div class="d2-due" style="background:#1a3a5c22;color:#90e0ff;border-color:#2b6cb044">✓ A</div>
+      {{else if $inB}}<div class="d2-due" style="background:#2d1b6922;color:#b794f4;border-color:#55309044">✓ B</div>
       {{else if gt .LastSeen 12}}<div class="d2-due">⏳ DUE</div>{{end}}
     </div>
     {{end}}
   </div>
   {{if .Alasan}}<div class="pred-alasan">💡 {{.Alasan}}</div>{{end}}
   <div style="margin-top:.65rem;font-size:.71rem;color:#4a5568;line-height:1.5;border-top:1px solid #1a2535;padding-top:.55rem">
-    <strong style="color:#637087">✓ BBFS</strong> = pasangan ini tercakup dalam 20 kombinasi BBFS &nbsp;·&nbsp;
-    BBFS memilih 5 digit dengan <em>total kontribusi skor tertinggi</em>, bukan sekadar 5 digit dari pasangan teratas
+    <strong style="color:#90e0ff">✓ A</strong> = tercakup BBFS-A &nbsp;·&nbsp;
+    <strong style="color:#b794f4">✓ B</strong> = tercakup BBFS-B &nbsp;·&nbsp;
+    BBFS memilih 6 digit dengan <em>total kontribusi skor tertinggi</em>
   </div>
 </div>
 {{end}}
 
 {{end}}
 
-{{/* ── Kombinasi 2D ── */}}
+{{/* ── Kombinasi 2D BBFS-A ── */}}
 {{if .BBFS}}
 <div class="card">
-  <div class="card-title">📋 20 Kombinasi 2D dari {{.BBFS.Digits}}</div>
+  <div class="card-title">📋 30 Kombinasi 2D dari BBFS-A ({{.BBFS.Digits}})</div>
   <div class="pairs-wrap">
     {{range .BBFS.Pairs2D}}<span class="pair-chip">{{.}}</span>{{end}}
   </div>
 
   <div class="sub-section table-scroll" style="margin-top:.85rem">
-    <div class="pred-label">📊 Matriks</div>
+    <div class="pred-label">📊 Matriks BBFS-A</div>
     <table class="matrix-tbl">
       <thead><tr>
         <th>×</th>
@@ -82,6 +98,17 @@
         {{end}}
       </tbody>
     </table>
+  </div>
+</div>
+{{end}}
+
+{{/* ── Kombinasi 2D BBFS-B ── */}}
+{{if .BBFS2}}
+<div class="card" style="border-color:#2d1b69">
+  <div class="card-title" style="color:#b794f4">📋 30 Kombinasi 2D dari BBFS-B ({{.BBFS2.Digits}})</div>
+  <div style="font-size:.72rem;color:#553c9a;margin-bottom:.6rem">Digit berbeda dari BBFS-A — gabungan BBFS-A + BBFS-B mencakup lebih banyak kombinasi.</div>
+  <div class="pairs-wrap">
+    {{range .BBFS2.Pairs2D}}<span class="pair-chip" style="border-color:#2d1b6966;color:#b794f4">{{.}}</span>{{end}}
   </div>
 </div>
 {{end}}
@@ -111,7 +138,7 @@
         <th style="text-align:right;padding:.4rem .5rem">Markov</th>
         <th style="text-align:right;padding:.4rem .5rem">Gap</th>
         <th style="text-align:right;padding:.4rem .5rem">DOW</th>
-        <th style="text-align:right;padding:.4rem .5rem">Corr</th>
+        <th style="text-align:right;padding:.4rem .5rem">Corr+AB</th>
         <th style="text-align:right;padding:.4rem .5rem">Sesi</th>
       </tr>
     </thead>
@@ -134,7 +161,7 @@
     <strong style="color:#718096">Markov</strong> = pola transisi antar sesi &nbsp;·&nbsp;
     <strong style="color:#718096">Gap</strong> = overdue analysis &nbsp;·&nbsp;
     <strong style="color:#718096">DOW</strong> = pola hari-dalam-seminggu &nbsp;·&nbsp;
-    <strong style="color:#718096">Corr</strong> = korelasi digit posisi
+    <strong style="color:#718096">Corr+AB</strong> = korelasi digit posisi + pola AB→CD
   </div>
 </div>
 {{end}}
@@ -155,7 +182,7 @@
 <div class="btn-row">
   <a href="/input" class="btn btn-primary">📋 Input Result</a>
   <a href="/" class="btn btn-secondary">🏠 Dashboard</a>
-  <a href="/stats" class="btn btn-secondary">📊 Statistik</a>
+  <a href="/backtest" class="btn btn-secondary">📈 Backtest</a>
 </div>
 
 <script>

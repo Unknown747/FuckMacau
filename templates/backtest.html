@@ -1,0 +1,86 @@
+{{template "base" .}}
+{{define "content"}}
+<div class="page-header">
+  <h1>📈 Backtest Prediksi</h1>
+  <p class="subtitle">Riwayat akurasi prediksi BBFS dari awal hingga sekarang</p>
+</div>
+
+{{/* ── Ringkasan ── */}}
+<div class="card">
+  <div class="card-title">🎯 Ringkasan Akurasi</div>
+  <div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:.75rem">
+    <div style="flex:1;min-width:80px;text-align:center">
+      <div style="font-size:2rem;font-weight:800;color:{{pctClass .WR.Pct | printf "%s"}}
+        {{- if ge .WR.Pct 50}}#68d391{{else if ge .WR.Pct 30}}#f6ad55{{else}}#fc8181{{end}}">{{.WR.Pct}}%</div>
+      <div style="font-size:.72rem;color:#637087;margin-top:.2rem">Win Rate</div>
+    </div>
+    <div style="flex:1;min-width:80px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#68d391">{{.WR.Hits}}</div>
+      <div style="font-size:.72rem;color:#637087;margin-top:.2rem">✅ HIT</div>
+    </div>
+    <div style="flex:1;min-width:80px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#fc8181">{{.WR.Miss}}</div>
+      <div style="font-size:.72rem;color:#637087;margin-top:.2rem">❌ MISS</div>
+    </div>
+    <div style="flex:1;min-width:80px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#e2e8f0">{{.WR.Total}}</div>
+      <div style="font-size:.72rem;color:#637087;margin-top:.2rem">Total Eval</div>
+    </div>
+  </div>
+  <div style="background:#0d1520;border-radius:6px;padding:.5rem .75rem;font-size:.75rem;color:#637087;line-height:1.6">
+    💡 BBFS 6 digit = <strong style="color:#90e0ff">30 kombinasi</strong> dari 100 kemungkinan (coverage 30%).
+    Probabilitas acak = 30%. Win rate di atas 30% berarti prediksi lebih baik dari acak.
+  </div>
+</div>
+
+{{/* ── Tabel Riwayat ── */}}
+{{if .BacktestRows}}
+<div class="card">
+  <div class="card-title" style="margin-bottom:.75rem">📋 Riwayat Prediksi (Terbaru di Atas)</div>
+  <div class="table-scroll">
+  <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+    <thead>
+      <tr style="color:#637087;border-bottom:1px solid #1e2d3d">
+        <th style="text-align:left;padding:.4rem .5rem">Tanggal</th>
+        <th style="text-align:center;padding:.4rem .5rem">Sesi</th>
+        <th style="text-align:left;padding:.4rem .5rem">BBFS</th>
+        <th style="text-align:center;padding:.4rem .5rem">Top 2D</th>
+        <th style="text-align:center;padding:.4rem .5rem">Aktual</th>
+        <th style="text-align:center;padding:.4rem .5rem">Hasil</th>
+        <th style="text-align:right;padding:.4rem .5rem">Win Rate</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .BacktestRows}}
+    <tr style="border-bottom:1px solid #0d1520{{if .IsHit}};background:#0d1f0d{{end}}">
+      <td style="padding:.4rem .5rem;color:#a0aec0">{{.Tanggal | formatDate}}</td>
+      <td style="text-align:center;padding:.4rem .5rem;color:#637087">S{{.Sesi}}</td>
+      <td style="padding:.4rem .5rem;font-family:monospace;letter-spacing:.1em;color:#90e0ff">{{.BBFS}}</td>
+      <td style="text-align:center;padding:.4rem .5rem;font-weight:700;color:{{colorOf .TopD2}}">{{.TopD2}}</td>
+      <td style="text-align:center;padding:.4rem .5rem;font-weight:700;color:{{colorOf .ActualD2}}">{{.ActualD2}}</td>
+      <td style="text-align:center;padding:.4rem .5rem">
+        {{if .IsHit}}<span style="color:#68d391;font-weight:700">✅ HIT</span>
+        {{else}}<span style="color:#fc8181">❌ MISS</span>{{end}}
+      </td>
+      <td style="text-align:right;padding:.4rem .5rem;color:{{if ge .RunPct 30}}#68d391{{else}}#fc8181{{end}}">
+        {{.RunHits}}/{{.RunTotal}} ({{.RunPct}}%)
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</div>
+{{else}}
+<div class="card" style="text-align:center;padding:2rem">
+  <div style="font-size:2rem;margin-bottom:.5rem">📭</div>
+  <div style="color:#637087;font-size:.9rem">Belum ada data evaluasi. Input result secara rutin agar backtest terisi.</div>
+</div>
+{{end}}
+
+<div class="btn-row">
+  <a href="/predict" class="btn btn-primary">🤖 Prediksi AI</a>
+  <a href="/stats" class="btn btn-secondary">📊 Statistik</a>
+  <a href="/" class="btn btn-secondary">🏠 Dashboard</a>
+</div>
+{{end}}
