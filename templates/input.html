@@ -6,6 +6,7 @@
 </div>
 
 {{if .Error}}<div class="alert alert-error">❌ {{.Error}}</div>{{end}}
+{{if .Message}}<div class="alert alert-success">✅ {{.Message}}</div>{{end}}
 
 <div class="card">
   <form method="POST" action="/input">
@@ -47,37 +48,89 @@
   </form>
 </div>
 
-<div class="card">
-  <div class="card-title">📜 Riwayat Result</div>
+{{/* ── Riwayat Grid ── */}}
+<div class="card no-pad" style="overflow:hidden">
+  <div style="background:#c0392b;padding:.75rem 1rem;text-align:center">
+    <span style="font-size:1rem;font-weight:800;color:#fff;letter-spacing:.08em;text-transform:uppercase">📋 Hasil Toto Macau</span>
+  </div>
   <div class="table-scroll">
-    <table class="data-tbl" id="resultTable">
-      <thead><tr><th>#</th><th>Tanggal</th><th>Sesi</th><th>4D</th><th>2D</th></tr></thead>
-      <tbody id="resultBody">
-        <tr><td colspan="5" class="td-center muted">Memuat...</td></tr>
+    <table id="gridTable" style="width:100%;border-collapse:collapse;min-width:480px">
+      <thead>
+        <tr style="background:#1a2535">
+          <th style="padding:.65rem .75rem;text-align:center;color:#e2e8f0;font-size:.82rem;font-weight:700;border-bottom:2px solid #2d3748;white-space:nowrap">Tanggal</th>
+          <th style="padding:.65rem .5rem;text-align:center;color:#90cdf4;font-size:.78rem;font-weight:700;border-bottom:2px solid #2d3748">00:01</th>
+          <th style="padding:.65rem .5rem;text-align:center;color:#90cdf4;font-size:.78rem;font-weight:700;border-bottom:2px solid #2d3748">13:00</th>
+          <th style="padding:.65rem .5rem;text-align:center;color:#90cdf4;font-size:.78rem;font-weight:700;border-bottom:2px solid #2d3748">16:00</th>
+          <th style="padding:.65rem .5rem;text-align:center;color:#90cdf4;font-size:.78rem;font-weight:700;border-bottom:2px solid #2d3748">19:00</th>
+          <th style="padding:.65rem .5rem;text-align:center;color:#90cdf4;font-size:.78rem;font-weight:700;border-bottom:2px solid #2d3748">22:00</th>
+          <th style="padding:.65rem .5rem;text-align:center;color:#90cdf4;font-size:.78rem;font-weight:700;border-bottom:2px solid #2d3748">23:00</th>
+        </tr>
+      </thead>
+      <tbody id="gridBody">
+        <tr><td colspan="7" style="text-align:center;padding:1.5rem;color:#637087;font-size:.85rem">Memuat...</td></tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <script>
-fetch('/api/results?limit=40')
-  .then(r => r.json())
+var SESI_LABEL = ['', '00:01', '13:00', '16:00', '19:00', '22:00', '23:00'];
+
+function fmtDate(s) {
+  // s = "2026-06-19" → "19 Jun"
+  var months = ['','Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  var parts = s.split('-');
+  if (parts.length < 3) return s;
+  return parseInt(parts[2]) + ' ' + months[parseInt(parts[1])];
+}
+
+function colorD2(d2) {
+  var n = parseInt(d2, 10);
+  var colors = ['#ff6b6b','#ffa94d','#ffd43b','#69db7c','#4dabf7','#cc5de8',
+                '#f06595','#74c0fc','#a9e34b','#63e6be'];
+  return colors[Math.floor(n / 10) % 10];
+}
+
+fetch('/api/results?limit=120')
+  .then(function(r) { return r.json(); })
   .then(function(data) {
-    var tbody = document.getElementById('resultBody');
+    var tbody = document.getElementById('gridBody');
     if (!data || !data.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="td-center muted">Belum ada data</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:1.5rem;color:#637087">Belum ada data</td></tr>';
       return;
     }
-    tbody.innerHTML = data.map(function(r, i) {
-      var d2 = r.Nomor && r.Nomor.length >= 4 ? r.Nomor.slice(2) : '--';
-      return '<tr>' +
-        '<td class="muted">' + (i+1) + '</td>' +
-        '<td>' + r.Tanggal + '</td>' +
-        '<td><span class="badge badge-blue">S' + r.Sesi + '</span></td>' +
-        '<td><strong class="num4d">' + r.Nomor + '</strong></td>' +
-        '<td><span class="badge badge-green">' + d2 + '</span></td>' +
+    // Group by tanggal, preserving order (data sorted desc by default)
+    var dateMap = {};
+    var dateOrder = [];
+    data.forEach(function(r) {
+      if (!dateMap[r.Tanggal]) {
+        dateMap[r.Tanggal] = {};
+        dateOrder.push(r.Tanggal);
+      }
+      dateMap[r.Tanggal][r.Sesi] = r.Nomor;
+    });
+    // Render rows
+    tbody.innerHTML = dateOrder.map(function(tanggal, idx) {
+      var cells = dateMap[tanggal];
+      var bg = idx % 2 === 0 ? '#0d1520' : '#0a1018';
+      var sesiCols = [1,2,3,4,5,6].map(function(s) {
+        var nomor = cells[s];
+        if (!nomor) return '<td style="text-align:center;padding:.6rem .4rem;color:#2d3748;font-size:1rem">—</td>';
+        var d2 = nomor.length >= 4 ? nomor.slice(2) : '';
+        var color = d2 ? colorD2(d2) : '#4fd1c5';
+        return '<td style="text-align:center;padding:.55rem .4rem">' +
+          '<span style="font-size:1.1rem;font-weight:800;color:' + color + ';letter-spacing:.06em;font-family:monospace">' + nomor + '</span>' +
+          '</td>';
+      }).join('');
+      return '<tr style="background:' + bg + ';border-bottom:1px solid #111e2b">' +
+        '<td style="text-align:center;padding:.6rem .75rem;color:#a0aec0;font-weight:700;font-size:.85rem;white-space:nowrap">' + fmtDate(tanggal) + '</td>' +
+        sesiCols +
         '</tr>';
     }).join('');
+  })
+  .catch(function() {
+    document.getElementById('gridBody').innerHTML =
+      '<tr><td colspan="7" style="text-align:center;padding:1.5rem;color:#637087">Gagal memuat data</td></tr>';
   });
 </script>
 {{end}}
