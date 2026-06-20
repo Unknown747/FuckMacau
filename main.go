@@ -1561,6 +1561,14 @@ func newFuncMap() template.FuncMap {
                         return strings.ContainsRune(digits, rune(d2[0])) &&
                                 strings.ContainsRune(digits, rune(d2[1]))
                 },
+                "hasPair": func(pairs []string, d2 string) bool {
+                        for _, p := range pairs {
+                                if p == d2 {
+                                        return true
+                                }
+                        }
+                        return false
+                },
                 "formatDate": func(s string) string {
                         t, err := time.Parse("2006-01-02", s)
                         if err != nil {
