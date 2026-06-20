@@ -1,6 +1,7 @@
 package main
 
 import (
+        "bytes"
         "database/sql"
         "encoding/json"
         "fmt"
@@ -11,6 +12,7 @@ import (
         "sort"
         "strconv"
         "strings"
+        "sync"
         "time"
 
         _ "github.com/mattn/go-sqlite3"
@@ -210,6 +212,7 @@ type CompStatRow struct {
 }
 
 var globalWeights = LearnedWeights{MarkovMult: 1.0, GapMult: 1.0, DowMult: 1.0, CorrMult: 1.0}
+var globalWeightsMu sync.RWMutex
 
 func loadLearnedWeights() LearnedWeights {
         var lw LearnedWeights
@@ -279,7 +282,9 @@ func retuneWeights() {
         newC := calcMult("corr", cur.CorrMult)
         db.Exec(`UPDATE component_weights SET markov_mult=?,gap_mult=?,dow_mult=?,corr_mult=?,eval_count=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`,
                 newM, newG, newD, newC, total)
+        globalWeightsMu.Lock()
         globalWeights = LearnedWeights{MarkovMult: newM, GapMult: newG, DowMult: newD, CorrMult: newC, EvalCount: total}
+        globalWeightsMu.Unlock()
         log.Printf("🎓 Auto-tune: markov×%.2f gap×%.2f dow×%.2f corr×%.2f (%d eval)", newM, newG, newD, newC, total)
 }
 
@@ -462,6 +467,15 @@ func generateBBFS(input string) *BBFSResult {
                 Pairs2D:    pairs,
                 TotalPairs: len(pairs),
         }
+}
+
+func isAllDigits(s string) bool {
+        for _, c := range s {
+                if c < '0' || c > '9' {
+                        return false
+                }
+        }
+        return len(s) > 0
 }
 
 func isHit(digits, d2 string) bool {
@@ -1304,7 +1318,9 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 // Formula: sesiFreq (auto-bobot) + allFreq + markov + streak
                 //          + gap (overdue) + dow (hari minggu) + corr (korelasi posisi)
                 // Setiap komponen dikalikan bobot yang dipelajari dari backtesting
+                globalWeightsMu.RLock()
                 gw := globalWeights
+                globalWeightsMu.RUnlock()
                 score := s.sesiFreq*sesiWeight +
                         s.allFreq*1.5 +
                         s.markov*gw.MarkovMult +
@@ -1638,10 +1654,14 @@ func render(w http.ResponseWriter, page string, data interface{}) {
                 http.Error(w, "halaman tidak ditemukan", 404)
                 return
         }
-        w.Header().Set("Content-Type", "text/html; charset=utf-8")
-        if err := t.ExecuteTemplate(w, page+".html", data); err != nil {
+        var buf bytes.Buffer
+        if err := t.ExecuteTemplate(&buf, page+".html", data); err != nil {
                 log.Println("render error:", err)
+                http.Error(w, "Kesalahan rendering halaman: "+err.Error(), 500)
+                return
         }
+        w.Header().Set("Content-Type", "text/html; charset=utf-8")
+        buf.WriteTo(w)
 }
 
 func recovery(next http.Handler) http.Handler {
@@ -1769,8 +1789,8 @@ func inputHandler(w http.ResponseWriter, r *http.Request) {
         sesi, _ := strconv.Atoi(r.FormValue("sesi"))
         nomor := strings.TrimSpace(r.FormValue("nomor"))
 
-        if len(nomor) != 4 {
-                render(w, "input", PageData{Error: "Nomor harus tepat 4 digit!", CurrentDate: tanggal, Results: getResults(30)})
+        if len(nomor) != 4 || !isAllDigits(nomor) {
+                render(w, "input", PageData{Error: "Nomor harus tepat 4 angka (0-9)!", CurrentDate: tanggal, Results: getResults(30)})
                 return
         }
         if _, err := db.Exec(
@@ -1809,7 +1829,7 @@ func inputBatchHandler(w http.ResponseWriter, r *http.Request) {
                 tanggal := strings.TrimSpace(parts[0])
                 sesi, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
                 nomor := strings.TrimSpace(parts[2])
-                if len(nomor) != 4 || sesi < 1 || sesi > 6 {
+                if len(nomor) != 4 || !isAllDigits(nomor) || sesi < 1 || sesi > 6 {
                         fail++
                         continue
                 }
@@ -1991,7 +2011,9 @@ func seedPredictions() {
 func main() {
         initDB()
         // Load learned weights ke memori supaya analyzeD2Enhanced bisa pakai
+        globalWeightsMu.Lock()
         globalWeights = loadLearnedWeights()
+        globalWeightsMu.Unlock()
         seedPredictions()
         loadTemplates()
 
