@@ -1139,7 +1139,8 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 lastSesiIdx int
                 markov      float64
                 streak      float64
-                corr        float64 // Upgrade 2: digit pair correlation
+                corr        float64
+                gap         float64 // boost untuk 2D yang lama tidak muncul di sesi ini
         }
         stats := map[string]*stat{}
         ensure := func(d2 string) {
@@ -1148,7 +1149,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
         }
 
-        // Frekuensi semua sesi — decay lebih smooth, kurangi bias ekstrim jangka pendek
+        // Frekuensi semua sesi — super-boost 3 hari terakhir
         for i, e := range allEntries {
                 if len(e.nomor) < 4 {
                         continue
@@ -1160,8 +1161,10 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 if err == nil {
                         age := now.Sub(t).Hours() / 24
                         switch {
+                        case age <= 3:
+                                weight = 6.0 - age*0.3 // 6.0 → 5.1 (super-boost terbaru)
                         case age <= 7:
-                                weight = 4.0 - age*0.1 // 4.0 → 3.3 dalam 7 hari (sebelumnya 8→4.5)
+                                weight = 4.5 - age*0.15 // 4.5 → 3.45
                         case age <= 30:
                                 weight = math.Exp(-age/18.0)*2.5 + 0.3
                         default:
@@ -1196,8 +1199,10 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 if err == nil {
                         age := now.Sub(t).Hours() / 24
                         switch {
+                        case age <= 3:
+                                weight = 9.0 - age*0.5 // 9.0 → 7.5 (super-boost sesi terbaru)
                         case age <= 7:
-                                weight = 5.5 - age*0.2 // 5.5 → 4.1 dalam 7 hari (sebelumnya 10→5.8)
+                                weight = 6.5 - age*0.25 // 6.5 → 5.25
                         case age <= 21:
                                 weight = math.Exp(-age/12.0)*3.5 + 0.4
                         default:
@@ -1207,6 +1212,27 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 stats[d2].sesiFreq += weight
                 if stats[d2].lastSesiIdx == 9999 {
                         stats[d2].lastSesiIdx = len(sesiEntries) - i
+                }
+        }
+
+        // ── Gap/Cooldown Boost: 2D yang lama tidak muncul di sesi ini ────────────
+        // Makin lama tidak muncul → makin besar boost (batas max agar tidak dominan)
+        for _, s := range stats {
+                if s.lastSesiIdx == 9999 {
+                        s.gap = 5.0 // belum pernah muncul di sesi ini sama sekali
+                        continue
+                }
+                switch {
+                case s.lastSesiIdx > 25:
+                        s.gap = 7.0
+                case s.lastSesiIdx > 18:
+                        s.gap = 5.0
+                case s.lastSesiIdx > 12:
+                        s.gap = 3.0
+                case s.lastSesiIdx > 8:
+                        s.gap = 1.5
+                default:
+                        s.gap = 0
                 }
         }
 
@@ -1304,7 +1330,8 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         s.allFreq*1.5 +
                         s.markov*gw.MarkovMult +
                         s.streak +
-                        s.corr*5.5*gw.CorrMult
+                        s.corr*5.5*gw.CorrMult +
+                        s.gap*1.2
                 lastSeen := s.lastIdx
                 if s.lastSesiIdx < lastSeen {
                         lastSeen = s.lastSesiIdx
@@ -1385,6 +1412,67 @@ func analyzeFreqItems(limit int) []FreqItem {
 }
 
 // buildBBFSOptimized mencari 5 digit terbaik dari C(10,5)=252 kombinasi
+// calcDigitHitRate hitung hit-rate per digit (0-9) dari riwayat BBFS + result.
+// Digit yang sering masuk BBFS tapi jarang HIT mendapat penalty < 1.0.
+func calcDigitHitRate() map[string]float64 {
+        rows, err := db.Query(`
+                SELECT bp.digits, r.nomor
+                FROM bbfs_preds bp
+                INNER JOIN results r ON r.tanggal=bp.tanggal AND r.sesi=bp.sesi
+                WHERE bp.source='AI-LOKAL' AND LENGTH(bp.digits)>=6
+                ORDER BY bp.id DESC LIMIT 80`)
+        if err != nil {
+                return nil
+        }
+        defer rows.Close()
+
+        type digitStat struct{ inBBFS, hit int }
+        ds := map[string]*digitStat{}
+        for d := 0; d <= 9; d++ {
+                ds[strconv.Itoa(d)] = &digitStat{}
+        }
+
+        for rows.Next() {
+                var digits, nomor string
+                rows.Scan(&digits, &nomor)
+                if len(nomor) < 4 || len(digits) < 6 {
+                        continue
+                }
+                actualD2 := nomor[2:4]
+                hit := isHit(digits, actualD2)
+                for _, ch := range digits {
+                        d := string(ch)
+                        if d >= "0" && d <= "9" {
+                                ds[d].inBBFS++
+                                if hit {
+                                        ds[d].hit++
+                                }
+                        }
+                }
+        }
+
+        mult := map[string]float64{}
+        for d, s := range ds {
+                if s.inBBFS < 8 {
+                        mult[d] = 1.0 // data terlalu sedikit, tidak dipenalize
+                        continue
+                }
+                rate := float64(s.hit) / float64(s.inBBFS)
+                switch {
+                case rate < 0.15:
+                        mult[d] = 0.50 // sangat jarang hit → penalti keras
+                case rate < 0.25:
+                        mult[d] = 0.70 // jarang hit → penalti sedang
+                case rate < 0.35:
+                        mult[d] = 0.85 // sedikit di bawah rata-rata
+                default:
+                        mult[d] = 1.0 // normal atau bagus
+                }
+        }
+        return mult
+}
+
+// buildBBFSFromStats mencari 6 digit terbaik dari C(10,6)=210 kombinasi.
 // Pilih kombinasi yang memaksimalkan total skor D2 pair yang terbentuk
 func buildBBFSFromStats(stats []D2Stat) string {
         if len(stats) == 0 {
@@ -1439,6 +1527,14 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 strong := digitStrongCount[d]
                 if weak > strong {
                         digitContrib[d] *= 0.6
+                }
+        }
+
+        // Terapkan penalti digit dari riwayat hit-rate historis
+        hitMult := calcDigitHitRate()
+        for d, m := range hitMult {
+                if m < 1.0 {
+                        digitContrib[d] *= m
                 }
         }
 
