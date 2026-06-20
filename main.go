@@ -121,6 +121,16 @@ type BacktestRow struct {
         RunPct   int
 }
 
+type SesiPred struct {
+        Sesi      int
+        BBFS      string
+        BBFSList  []string
+        Top5      []D2Stat
+        IsNext    bool
+        HasResult bool
+        ActualD2  string
+}
+
 type PageData struct {
         Results           []Result
         Predictions       []Prediction
@@ -144,6 +154,8 @@ type PageData struct {
         CompStats         []CompStatRow
         LearnedWeights    LearnedWeights
         BacktestRows      []BacktestRow
+        SesiPreds         []SesiPred
+        PredDate          string
 }
 
 // ── DB ────────────────────────────────────────────────────────────────────────
@@ -1649,6 +1661,13 @@ func newFuncMap() template.FuncMap {
                         days := []string{"Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"}
                         return days[t.Weekday()] + " " + t.Format("02/01")
                 },
+                "prevDate": func(s string) string {
+                        t, err := time.Parse("2006-01-02", s)
+                        if err != nil {
+                                return s
+                        }
+                        return t.AddDate(0, 0, -1).Format("2006-01-02")
+                },
                 "pct": func(count, max int) int {
                         if max == 0 {
                                 return 0
@@ -1930,89 +1949,82 @@ func paitoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func predictHandler(w http.ResponseWriter, r *http.Request) {
-        // Prediksi selalu otomatis — tidak ada POST/generate manual
-        // Ambil sesi berikutnya berdasarkan result terakhir di DB
         lastDate, lastSesi := getLastResultEntry()
         today := nowWIB().Format("2006-01-02")
         next := currentSesi()
 
         if lastDate != "" {
-                var d string
-                var s int
-                d, s = nextSessionAfter(lastDate, lastSesi)
+                d, s := nextSessionAfter(lastDate, lastSesi)
                 today = d
                 next = s
-                // Koreksi: jika nextSesi dari DB sudah berlalu, pakai upcoming sesi.
                 nowStr := nowWIB().Format("2006-01-02")
                 if today == nowStr && next < currentSesi() {
                         next = currentSesi()
                 }
         }
 
-        // Override jika ada query param ?tanggal=&sesi= (untuk lihat sesi lain, read-only)
+        // Override tanggal via query param
         if qt := r.URL.Query().Get("tanggal"); qt != "" {
                 today = qt
         }
-        if qs := r.URL.Query().Get("sesi"); qs != "" {
-                if sv, err := strconv.Atoi(qs); err == nil && sv >= 1 && sv <= 6 {
-                        next = sv
-                }
-        }
 
-        pred := getPredictionForDate(today, next)
-
-        paitoStats := analyzeD2Enhanced(next)
-        top10 := paitoStats
-        if len(top10) > 10 {
-                top10 = top10[:10]
-        }
-
-        var bbfs string
-        if pred != nil && len(pred.BBFS) >= 6 {
-                // Entry DB sudah 6 digit — pakai langsung
-                bbfs = pred.BBFS
-                pred.Top2D = top10
-                pred.Alasan = buildAlasan(top10, next)
-        } else {
-                // Entry tidak ada ATAU masih 5 digit lama → regenerate dengan algoritma baru (6 digit)
-                bbfs = buildBBFSFromStats(paitoStats)
-                if len(bbfs) >= 5 {
-                        savePrediction(today, next, bbfs, "AI-LOKAL")
-                        pred = &Prediction{
-                                Metode:   "AI-LOKAL",
-                                Top2D:    top10,
-                                BBFS:     bbfs,
-                                BBFSList: strings.Split(bbfs, ""),
-                                Alasan:   buildAlasan(top10, next),
+        // Ambil result yang sudah ada untuk tanggal ini
+        existingResults := map[int]string{}
+        rows, _ := db.Query(`SELECT sesi, nomor FROM results WHERE tanggal=?`, today)
+        if rows != nil {
+                for rows.Next() {
+                        var s int
+                        var n string
+                        rows.Scan(&s, &n)
+                        if len(n) >= 2 {
+                                existingResults[s] = n[len(n)-2:]
                         }
                 }
+                rows.Close()
         }
 
-        // Load BBFS2 (set alternatif)
-        var bbfs2 string
-        db.QueryRow(`SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL-2'`, today, next).Scan(&bbfs2)
-        if len(bbfs2) < 5 && len(bbfs) >= 5 {
-                bbfs2 = buildBBFS2FromStats(paitoStats, bbfs)
-                if len(bbfs2) >= 5 {
-                        savePrediction(today, next, bbfs2, "AI-LOKAL-2")
+        // Build prediksi untuk semua 6 sesi
+        var sesiPreds []SesiPred
+        for sesi := 1; sesi <= 6; sesi++ {
+                stats := analyzeD2Enhanced(sesi)
+
+                // Ambil BBFS dari DB atau generate
+                var bbfsDigits string
+                db.QueryRow(
+                        `SELECT digits FROM bbfs_preds WHERE tanggal=? AND sesi=? AND source='AI-LOKAL' ORDER BY id DESC LIMIT 1`,
+                        today, sesi,
+                ).Scan(&bbfsDigits)
+                if len(bbfsDigits) < 6 {
+                        bbfsDigits = buildBBFSFromStats(stats)
+                        if len(bbfsDigits) >= 6 {
+                                savePrediction(today, sesi, bbfsDigits, "AI-LOKAL")
+                        }
                 }
+
+                top5 := stats
+                if len(top5) > 5 {
+                        top5 = top5[:5]
+                }
+
+                actualD2 := existingResults[sesi]
+                sp := SesiPred{
+                        Sesi:      sesi,
+                        BBFS:      bbfsDigits,
+                        BBFSList:  strings.Split(bbfsDigits, ""),
+                        Top5:      top5,
+                        IsNext:    sesi == next,
+                        HasResult: actualD2 != "",
+                        ActualD2:  actualD2,
+                }
+                sesiPreds = append(sesiPreds, sp)
         }
 
-        data := PageData{
+        render(w, "predict", PageData{
                 CurrentDate: today,
                 NextSesi:    next,
-        }
-        if pred != nil {
-                data.Predictions = []Prediction{*pred}
-        }
-        if len(bbfs) >= 5 {
-                data.BBFS = generateBBFS(bbfs)
-        }
-        if len(bbfs2) >= 5 {
-                data.BBFS2 = generateBBFS(bbfs2)
-        }
-
-        render(w, "predict", data)
+                PredDate:    today,
+                SesiPreds:   sesiPreds,
+        })
 }
 
 func backtestHandler(w http.ResponseWriter, r *http.Request) {
