@@ -537,19 +537,11 @@ func autoPredict(tanggal string, sesi int) string {
         if len(bbfs) < 5 {
                 return ""
         }
-        bbfs2 := buildBBFS2FromStats(stats, bbfs)
 
         saveOrUpdatePrediction(nextDate, nextSesi, bbfs, "AI-LOKAL")
-        if len(bbfs2) >= 5 {
-                saveOrUpdatePrediction(nextDate, nextSesi, bbfs2, "AI-LOKAL-2")
-        }
         savePredComponent(nextDate, nextSesi, stats, bbfs)
 
-        msg := fmt.Sprintf("Auto-prediksi Sesi %d (%s): BBFS-A %s", nextSesi, nextDate, bbfs)
-        if len(bbfs2) >= 5 {
-                msg += " | BBFS-B " + bbfs2
-        }
-        return msg
+        return fmt.Sprintf("Auto-prediksi Sesi %d (%s): BBFS %s", nextSesi, nextDate, bbfs)
 }
 
 func getBBFSValidations(limit int) []BBFSValidation {
@@ -2158,6 +2150,18 @@ func seedPredictions() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// cleanupBBFS2 hapus semua entry AI-LOKAL-2 dari database (tidak digunakan lagi)
+func cleanupBBFS2() {
+        res, err := db.Exec(`DELETE FROM bbfs_preds WHERE source='AI-LOKAL-2'`)
+        if err != nil {
+                return
+        }
+        n, _ := res.RowsAffected()
+        if n > 0 {
+                log.Printf("Cleanup: hapus %d entri AI-LOKAL-2 dari bbfs_preds", n)
+        }
+}
+
 // migrateBBFS5to6 upgrade semua entry bbfs_preds 5-digit → 6-digit menggunakan algoritma baru
 func migrateBBFS5to6() {
         rows, err := db.Query(`SELECT id, sesi FROM bbfs_preds WHERE source='AI-LOKAL' AND LENGTH(digits)=5`)
@@ -2193,6 +2197,7 @@ func main() {
         globalWeights = loadLearnedWeights()
         globalWeightsMu.Unlock()
         seedPredictions()
+        cleanupBBFS2()
         migrateBBFS5to6()
         loadTemplates()
 
