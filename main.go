@@ -1162,9 +1162,9 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         age := now.Sub(t).Hours() / 24
                         switch {
                         case age <= 3:
-                                weight = 6.0 - age*0.3 // 6.0 → 5.1 (super-boost terbaru)
+                                weight = 4.0 - age*0.2 // 4.0 → 3.4 (boost terbaru moderat)
                         case age <= 7:
-                                weight = 4.5 - age*0.15 // 4.5 → 3.45
+                                weight = 3.0 - age*0.1 // 3.0 → 2.3
                         case age <= 30:
                                 weight = math.Exp(-age/18.0)*2.5 + 0.3
                         default:
@@ -1200,9 +1200,9 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         age := now.Sub(t).Hours() / 24
                         switch {
                         case age <= 3:
-                                weight = 9.0 - age*0.5 // 9.0 → 7.5 (super-boost sesi terbaru)
+                                weight = 6.0 - age*0.3 // 6.0 → 5.1 (boost sesi terbaru moderat)
                         case age <= 7:
-                                weight = 6.5 - age*0.25 // 6.5 → 5.25
+                                weight = 4.5 - age*0.2 // 4.5 → 3.1
                         case age <= 21:
                                 weight = math.Exp(-age/12.0)*3.5 + 0.4
                         default:
@@ -1216,21 +1216,26 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
         }
 
         // ── Gap/Cooldown Boost: 2D yang lama tidak muncul di sesi ini ────────────
-        // Makin lama tidak muncul → makin besar boost (batas max agar tidak dominan)
+        // Hanya berlaku untuk pair yang sudah pernah muncul secara global (allFreq > 0.5)
+        // agar pair yang memang jarang/tidak relevan tidak mendapat boost palsu
         for _, s := range stats {
+                if s.allFreq < 0.5 {
+                        s.gap = 0 // pair terlalu jarang secara global → skip
+                        continue
+                }
                 if s.lastSesiIdx == 9999 {
-                        s.gap = 5.0 // belum pernah muncul di sesi ini sama sekali
+                        s.gap = 2.0 // belum pernah muncul di sesi ini tapi aktif secara global
                         continue
                 }
                 switch {
                 case s.lastSesiIdx > 25:
-                        s.gap = 7.0
-                case s.lastSesiIdx > 18:
-                        s.gap = 5.0
-                case s.lastSesiIdx > 12:
                         s.gap = 3.0
+                case s.lastSesiIdx > 18:
+                        s.gap = 2.0
+                case s.lastSesiIdx > 12:
+                        s.gap = 1.2
                 case s.lastSesiIdx > 8:
-                        s.gap = 1.5
+                        s.gap = 0.5
                 default:
                         s.gap = 0
                 }
@@ -1530,13 +1535,8 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 }
         }
 
-        // Terapkan penalti digit dari riwayat hit-rate historis
-        hitMult := calcDigitHitRate()
-        for d, m := range hitMult {
-                if m < 1.0 {
-                        digitContrib[d] *= m
-                }
-        }
+        // Digit hit-rate penalty dinonaktifkan — butuh 80+ data historis dulu
+        // hitMult := calcDigitHitRate() — aktifkan setelah data cukup
 
         allDigits := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 
