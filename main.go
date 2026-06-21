@@ -192,6 +192,7 @@ func initDB() {
                 log.Fatal(err)
         }
         db.Exec(`DROP TABLE IF EXISTS tune_history`)
+        db.Exec(`DROP TABLE IF EXISTS bbfs_sessions`)
         db.Exec(`CREATE TABLE IF NOT EXISTS results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tanggal TEXT NOT NULL,
@@ -297,7 +298,7 @@ func retuneWeights() {
                         }
                 }
         }
-        if total < 20 {
+        if total < 10 {
                 return // tunggu sampai ada cukup data
         }
         calcMult := func(key string, cur float64) float64 {
@@ -363,7 +364,7 @@ func evalPrediction(tanggal string, sesi int, actualNomor string) {
         db.QueryRow(`SELECT eval_count FROM component_weights WHERE id=1`).Scan(&evalCount)
         var totalEval int
         db.QueryRow(`SELECT COUNT(*) FROM pred_components WHERE is_hit >= 0`).Scan(&totalEval)
-        if totalEval >= 20 && totalEval%5 == 0 {
+        if totalEval >= 10 && totalEval%5 == 0 {
                 go retuneWeights()
         }
 }
@@ -1137,13 +1138,16 @@ func calcEkorTransitionBoost(entries []rawEntry, targetSesi int) map[string]floa
                 return nil
         }
 
-        // Urutkan entries: tanggal ASC, sesi ASC
-        sort.Slice(entries, func(i, j int) bool {
-                if entries[i].tanggal == entries[j].tanggal {
-                        return entries[i].sesi < entries[j].sesi
+        // Salin slice agar tidak merusak urutan di caller
+        sorted := make([]rawEntry, len(entries))
+        copy(sorted, entries)
+        sort.Slice(sorted, func(i, j int) bool {
+                if sorted[i].tanggal == sorted[j].tanggal {
+                        return sorted[i].sesi < sorted[j].sesi
                 }
-                return entries[i].tanggal < entries[j].tanggal
+                return sorted[i].tanggal < sorted[j].tanggal
         })
+        entries = sorted
 
         // Bangun matriks transisi ekor → ekor berikutnya (semua sesi berurutan)
         type ekorPair struct{ from, to string }
@@ -2496,6 +2500,59 @@ func migrateBBFS5to6() {
         log.Printf("Migrasi BBFS selesai.")
 }
 
+// backfillPredComponents mengisi pred_components dari bbfs_preds+results historis
+// agar sistem learning bisa langsung bekerja — dijalankan async agar tidak block startup
+func backfillPredComponents() {
+        go func() {
+                rows, err := db.Query(`
+                        SELECT bp.tanggal, bp.sesi, bp.digits, r.nomor
+                        FROM bbfs_preds bp
+                        INNER JOIN results r ON r.tanggal=bp.tanggal AND r.sesi=bp.sesi
+                        WHERE bp.source='AI-LOKAL' AND LENGTH(bp.digits)=6 AND LENGTH(r.nomor)=4
+                        AND NOT EXISTS (
+                                SELECT 1 FROM pred_components pc 
+                                WHERE pc.tanggal=bp.tanggal AND pc.sesi=bp.sesi
+                        )`)
+                if err != nil {
+                        return
+                }
+                type row struct{ tanggal, digits, nomor string; sesi int }
+                var buf []row
+                for rows.Next() {
+                        var r row
+                        rows.Scan(&r.tanggal, &r.sesi, &r.digits, &r.nomor)
+                        buf = append(buf, r)
+                }
+                rows.Close()
+                if len(buf) == 0 {
+                        return
+                }
+                tx, err := db.Begin()
+                if err != nil {
+                        return
+                }
+                stmt, err := tx.Prepare(`INSERT OR IGNORE INTO pred_components
+                        (tanggal,sesi,top_d2,bbfs,markov_score,corr_score,total_score,is_hit,actual_d2)
+                        VALUES (?,?,?,?,1.0,1.0,1.0,?,?)`)
+                if err != nil {
+                        tx.Rollback()
+                        return
+                }
+                for _, r := range buf {
+                        d2 := r.nomor[2:4]
+                        hit := 0
+                        if isHit(r.digits, d2) {
+                                hit = 1
+                        }
+                        stmt.Exec(r.tanggal, r.sesi, d2, r.digits, hit, d2)
+                }
+                stmt.Close()
+                tx.Commit()
+                log.Printf("Backfill pred_components: %d rows terisi", len(buf))
+                retuneWeights()
+        }()
+}
+
 func main() {
         initDB()
         // Load learned weights ke memori supaya analyzeD2Enhanced bisa pakai
@@ -2505,6 +2562,7 @@ func main() {
         seedPredictions()
         cleanupBBFS2()
         migrateBBFS5to6()
+        backfillPredComponents()
         loadTemplates()
 
         mux := http.NewServeMux()
