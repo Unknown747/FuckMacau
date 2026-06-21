@@ -1106,6 +1106,77 @@ func abCorrelation(entries []rawEntry, targetSesi int) map[string]float64 {
         return scores
 }
 
+// calcEkorTransitionBoost membangun matriks transisi ekor dari histori Macau sendiri.
+// Mencari ekor terakhir sebelum sesi target, lalu mengembalikan skor boost per digit ekor
+// berdasarkan seberapa sering digit itu muncul setelah ekor sebelumnya.
+func calcEkorTransitionBoost(entries []rawEntry, targetSesi int) map[string]float64 {
+        if len(entries) < 10 {
+                return nil
+        }
+
+        // Urutkan entries: tanggal ASC, sesi ASC
+        sort.Slice(entries, func(i, j int) bool {
+                if entries[i].tanggal == entries[j].tanggal {
+                        return entries[i].sesi < entries[j].sesi
+                }
+                return entries[i].tanggal < entries[j].tanggal
+        })
+
+        // Bangun matriks transisi ekor → ekor berikutnya (semua sesi berurutan)
+        type ekorPair struct{ from, to string }
+        trans := map[ekorPair]int{}
+        fromCount := map[string]int{}
+        for i := 0; i < len(entries)-1; i++ {
+                if len(entries[i].nomor) < 4 || len(entries[i+1].nomor) < 4 {
+                        continue
+                }
+                from := string(entries[i].nomor[3])
+                to := string(entries[i+1].nomor[3])
+                trans[ekorPair{from, to}]++
+                fromCount[from]++
+        }
+
+        // Cari ekor terakhir yang diketahui (result sebelum sesi target)
+        lastDate := entries[len(entries)-1].tanggal
+        lastEkor := ""
+        for i := len(entries) - 1; i >= 0; i-- {
+                e := entries[i]
+                if len(e.nomor) < 4 {
+                        continue
+                }
+                // Ambil result terakhir sebelum sesi target (sesi lebih awal atau hari sebelumnya)
+                if e.sesi < targetSesi || e.tanggal < lastDate {
+                        lastEkor = string(e.nomor[3])
+                        break
+                }
+        }
+        if lastEkor == "" {
+                // Fallback: ekor dari result terakhir apapun
+                for i := len(entries) - 1; i >= 0; i-- {
+                        if len(entries[i].nomor) >= 4 {
+                                lastEkor = string(entries[i].nomor[3])
+                                break
+                        }
+                }
+        }
+        if lastEkor == "" || fromCount[lastEkor] == 0 {
+                return nil
+        }
+
+        // Hitung probabilitas transisi dari lastEkor → setiap ekor berikutnya
+        boost := map[string]float64{}
+        total := float64(fromCount[lastEkor])
+        for d := 0; d <= 9; d++ {
+                ds := strconv.Itoa(d)
+                count := trans[ekorPair{lastEkor, ds}]
+                if count > 0 {
+                        prob := float64(count) / total
+                        boost[ds] = prob // contoh: ekor "7" dapat 0.30 jika 30% transisi ke sana
+                }
+        }
+        return boost
+}
+
 func analyzeD2Enhanced(targetSesi int) []D2Stat {
         now := nowWIB()
         allEntries := getAllResults()
@@ -1141,6 +1212,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 streak      float64
                 corr        float64
                 gap         float64 // boost untuk 2D yang lama tidak muncul di sesi ini
+                ekorBoost   float64 // boost dari transisi ekor historis Macau
         }
         stats := map[string]*stat{}
         ensure := func(d2 string) {
@@ -1319,6 +1391,19 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 stats[d2].corr += score * 3.5
         }
 
+        // ── Upgrade 8: Ekor Transition Boost — dari matriks transisi Macau sendiri ─
+        // Boost D2 pair yang digit ekor-nya (digit ke-2) cocok dengan prediksi transisi
+        ekorTrans := calcEkorTransitionBoost(allEntries, targetSesi)
+        for d2, s := range stats {
+                if len(d2) != 2 {
+                        continue
+                }
+                ekor := string(d2[1]) // digit ke-2 dari pair = ekor
+                if prob, ok := ekorTrans[ekor]; ok {
+                        s.ekorBoost = prob * 8.0 // probabilitas 30% → boost 2.4, probabilitas 20% → boost 1.6
+                }
+        }
+
         // ── Gabungkan semua komponen ke skor akhir ────────────────────────────────
         var list []D2Stat
         for d2, s := range stats {
@@ -1326,7 +1411,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         continue
                 }
                 // Formula: sesiFreq (auto-bobot) + allFreq + markov + streak
-                //          + gap (overdue) + dow (hari minggu) + corr (korelasi posisi)
+                //          + gap (overdue) + ekorBoost (transisi ekor) + corr (korelasi posisi)
                 // Setiap komponen dikalikan bobot yang dipelajari dari backtesting
                 globalWeightsMu.RLock()
                 gw := globalWeights
@@ -1336,7 +1421,8 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         s.markov*gw.MarkovMult +
                         s.streak +
                         s.corr*5.5*gw.CorrMult +
-                        s.gap*1.2
+                        s.gap*1.2 +
+                        s.ekorBoost
                 lastSeen := s.lastIdx
                 if s.lastSesiIdx < lastSeen {
                         lastSeen = s.lastSesiIdx
