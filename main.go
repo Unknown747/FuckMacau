@@ -1419,22 +1419,45 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
         }
 
         // ── Upgrade 8: Ekor Transition Boost — dari matriks transisi Macau sendiri ─
-        // Boost D2 pair yang digit ekor-nya (digit ke-2) cocok dengan prediksi transisi
+        // Boost D2 pair yang digit ekor-nya (digit ke-2) cocok dengan prediksi transisi.
+        // Pastikan SEMUA pair dengan ekor terprediksi ada di stats (termasuk pair baru),
+        // agar sinyal ekor benar-benar menyatu dengan sistem prediksi 2D.
         ekorTrans := calcEkorTransitionBoost(allEntries, targetSesi)
-        for d2, s := range stats {
-                if len(d2) != 2 {
-                        continue
+        if ekorTrans != nil {
+                // Langkah 1: buat entries untuk SEMUA kemungkinan kepala × ekor terprediksi
+                // Ini memastikan pair yang belum pernah muncul pun bisa dipertimbangkan
+                for ekorDigit, prob := range ekorTrans {
+                        if prob < 0.08 { // minimal 8% probabilitas (noise cutoff)
+                                continue
+                        }
+                        for d1 := 0; d1 <= 9; d1++ {
+                                pair := fmt.Sprintf("%d%s", d1, ekorDigit)
+                                ensure(pair)
+                        }
                 }
-                ekor := string(d2[1]) // digit ke-2 dari pair = ekor
-                if prob, ok := ekorTrans[ekor]; ok {
-                        s.ekorBoost = prob * 8.0 // probabilitas 30% → boost 2.4, probabilitas 20% → boost 1.6
+                // Langkah 2: apply ekorBoost ke semua pair sesuai digit ekor-nya
+                for d2, s := range stats {
+                        if len(d2) != 2 {
+                                continue
+                        }
+                        ekor := string(d2[1])
+                        if prob, ok := ekorTrans[ekor]; ok {
+                                // probabilitas 30% → boost 2.4, probabilitas 10% → boost 0.8
+                                s.ekorBoost = prob * 8.0
+                        }
                 }
         }
 
         // ── Gabungkan semua komponen ke skor akhir ────────────────────────────────
         var list []D2Stat
         for d2, s := range stats {
-                if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 && s.corr < 0.05 {
+                // Filter pair yang tidak punya sinyal apapun dari semua sistem:
+                // - tidak muncul di sesi ini (sesiFreq==0)
+                // - tidak muncul di seluruh data (allFreq==0)
+                // - markov rendah (<0.5)
+                // - tidak ada korelasi (<0.05)
+                // - tidak ada ekor boost (<0.3 = prob < 3.75%) ← tambahan baru
+                if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 && s.corr < 0.05 && s.ekorBoost < 0.3 {
                         continue
                 }
                 // Formula: sesiFreq (auto-bobot) + allFreq + markov + streak
