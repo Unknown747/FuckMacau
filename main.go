@@ -126,9 +126,13 @@ type SesiPred struct {
         BBFS      string
         BBFSList  []string
         Top5      []D2Stat
+        Top3D     []string
+        Top4D     []string
         IsNext    bool
         HasResult bool
         ActualD2  string
+        Actual3D  string
+        Actual4D  string
 }
 
 type EkorCell struct {
@@ -1552,6 +1556,232 @@ func analyzeFreqItems(limit int) []FreqItem {
         return items
 }
 
+// ── Analisis 3D dan 4D ────────────────────────────────────────────────────────
+
+// analyzeDigitPosition menghitung skor frekuensi untuk 1 posisi digit (0=AS,1=KOP,2=KEP,3=EKR)
+// dari data sesi tertentu, dengan recency decay.
+func analyzeDigitPosition(entries []rawEntry, targetSesi int, pos int) map[string]float64 {
+        scores := map[string]float64{}
+        now := nowWIB()
+        for _, e := range entries {
+                if e.sesi != targetSesi || len(e.nomor) < 4 {
+                        continue
+                }
+                digit := string(e.nomor[pos])
+                t, err := time.Parse("2006-01-02", e.tanggal)
+                weight := 0.5
+                if err == nil {
+                        age := now.Sub(t).Hours() / 24
+                        switch {
+                        case age <= 3:
+                                weight = 4.0
+                        case age <= 7:
+                                weight = 2.5
+                        case age <= 14:
+                                weight = 1.5
+                        case age <= 30:
+                                weight = 0.8
+                        default:
+                                weight = 0.4
+                        }
+                }
+                scores[digit] += weight
+        }
+        return scores
+}
+
+// buildTop3D menghasilkan top-5 kandidat 3D (KOP+KEPALA+EKOR) per sesi.
+// Menggabungkan frekuensi langsung 3D historis + skor KOP × skor 2D.
+func buildTop3D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
+        now := nowWIB()
+
+        // Frekuensi 3D langsung (nomor[1:4]) dengan decay
+        d3freq := map[string]float64{}
+        for _, e := range entries {
+                if e.sesi != targetSesi || len(e.nomor) < 4 {
+                        continue
+                }
+                n3d := e.nomor[1:4]
+                t, err := time.Parse("2006-01-02", e.tanggal)
+                weight := 0.5
+                if err == nil {
+                        age := now.Sub(t).Hours() / 24
+                        switch {
+                        case age <= 3:
+                                weight = 4.0
+                        case age <= 7:
+                                weight = 2.5
+                        case age <= 14:
+                                weight = 1.5
+                        default:
+                                weight = 0.6
+                        }
+                }
+                d3freq[n3d] += weight
+        }
+
+        // Skor KOP dan D2
+        kopScores := analyzeDigitPosition(entries, targetSesi, 1)
+        d2Score := map[string]float64{}
+        for _, s := range d2Stats {
+                d2Score[s.D2] = s.Score
+        }
+        maxD2 := 0.0
+        for _, v := range d2Score {
+                if v > maxD2 {
+                        maxD2 = v
+                }
+        }
+
+        type cand struct {
+                n string
+                s float64
+        }
+        seen := map[string]bool{}
+        var cands []cand
+
+        // (A) Dari riwayat langsung
+        for n3d, freq := range d3freq {
+                if seen[n3d] {
+                        continue
+                }
+                seen[n3d] = true
+                kop := string(n3d[0])
+                d2 := n3d[1:3]
+                d2Norm := 0.0
+                if maxD2 > 0 {
+                        d2Norm = d2Score[d2] / maxD2
+                }
+                score := freq*2.5 + kopScores[kop]*d2Norm*3.0
+                cands = append(cands, cand{n3d, score})
+        }
+
+        // (B) Dari kombinasi top-KOP × top-D2 (cover pair yang belum pernah muncul)
+        type ks struct {
+                d string
+                s float64
+        }
+        var kopList []ks
+        for d, s := range kopScores {
+                kopList = append(kopList, ks{d, s})
+        }
+        sort.Slice(kopList, func(i, j int) bool { return kopList[i].s > kopList[j].s })
+        if len(kopList) > 3 {
+                kopList = kopList[:3]
+        }
+        topD2 := d2Stats
+        if len(topD2) > 4 {
+                topD2 = topD2[:4]
+        }
+        for _, kop := range kopList {
+                for _, pair := range topD2 {
+                        n3d := kop.d + pair.D2
+                        if seen[n3d] {
+                                continue
+                        }
+                        seen[n3d] = true
+                        d2Norm := 0.0
+                        if maxD2 > 0 {
+                                d2Norm = pair.Score / maxD2
+                        }
+                        score := kopScores[kop.d]*d2Norm*3.0
+                        cands = append(cands, cand{n3d, score})
+                }
+        }
+
+        sort.Slice(cands, func(i, j int) bool { return cands[i].s > cands[j].s })
+        var result []string
+        for _, c := range cands {
+                result = append(result, c.n)
+                if len(result) >= 5 {
+                        break
+                }
+        }
+        return result
+}
+
+// buildTop4D menghasilkan top-5 kandidat 4D (AS+KOP+KEPALA+EKOR) per sesi.
+func buildTop4D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
+        now := nowWIB()
+
+        // Frekuensi 4D langsung dengan decay
+        d4freq := map[string]float64{}
+        for _, e := range entries {
+                if e.sesi != targetSesi || len(e.nomor) < 4 {
+                        continue
+                }
+                t, err := time.Parse("2006-01-02", e.tanggal)
+                weight := 0.5
+                if err == nil {
+                        age := now.Sub(t).Hours() / 24
+                        switch {
+                        case age <= 3:
+                                weight = 5.0
+                        case age <= 7:
+                                weight = 3.0
+                        case age <= 14:
+                                weight = 1.5
+                        default:
+                                weight = 0.5
+                        }
+                }
+                d4freq[e.nomor] += weight
+        }
+
+        asScores := analyzeDigitPosition(entries, targetSesi, 0)
+        top3D := buildTop3D(d2Stats, entries, targetSesi)
+
+        type cand struct {
+                n string
+                s float64
+        }
+        seen := map[string]bool{}
+        var cands []cand
+
+        // (A) Dari riwayat 4D langsung
+        for nomor, freq := range d4freq {
+                if seen[nomor] || len(nomor) < 4 {
+                        continue
+                }
+                seen[nomor] = true
+                cands = append(cands, cand{nomor, freq * 3.0})
+        }
+
+        // (B) Top-AS × top-3D
+        type ks struct {
+                d string
+                s float64
+        }
+        var asList []ks
+        for d, s := range asScores {
+                asList = append(asList, ks{d, s})
+        }
+        sort.Slice(asList, func(i, j int) bool { return asList[i].s > asList[j].s })
+        if len(asList) > 3 {
+                asList = asList[:3]
+        }
+        for _, as_ := range asList {
+                for _, n3d := range top3D {
+                        n4d := as_.d + n3d
+                        if seen[n4d] {
+                                continue
+                        }
+                        seen[n4d] = true
+                        cands = append(cands, cand{n4d, as_.s})
+                }
+        }
+
+        sort.Slice(cands, func(i, j int) bool { return cands[i].s > cands[j].s })
+        var result []string
+        for _, c := range cands {
+                result = append(result, c.n)
+                if len(result) >= 5 {
+                        break
+                }
+        }
+        return result
+}
+
 // buildBBFSOptimized mencari 5 digit terbaik dari C(10,5)=252 kombinasi
 // calcDigitHitRate hitung hit-rate per digit (0-9) dari riwayat BBFS + result.
 // Digit yang sering masuk BBFS tapi jarang HIT mendapat penalty < 1.0.
@@ -2195,19 +2425,22 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
         }
 
         // Ambil result yang sudah ada untuk tanggal ini
-        existingResults := map[int]string{}
+        existingResults := map[int]string{} // sesi → full nomor 4D
         rows, _ := db.Query(`SELECT sesi, nomor FROM results WHERE tanggal=?`, today)
         if rows != nil {
                 for rows.Next() {
                         var s int
                         var n string
                         rows.Scan(&s, &n)
-                        if len(n) >= 2 {
-                                existingResults[s] = n[len(n)-2:]
+                        if len(n) >= 4 {
+                                existingResults[s] = n
                         }
                 }
                 rows.Close()
         }
+
+        // Ambil semua histori untuk 3D/4D analysis
+        allEntries := getAllResults()
 
         // Build prediksi untuk semua 6 sesi
         var sesiPreds []SesiPred
@@ -2232,15 +2465,30 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                         top5 = top5[:5]
                 }
 
-                actualD2 := existingResults[sesi]
+                // Build prediksi 3D dan 4D
+                top3D := buildTop3D(stats, allEntries, sesi)
+                top4D := buildTop4D(stats, allEntries, sesi)
+
+                actualFull := existingResults[sesi] // nomor 4D penuh
+                actualD2, actual3D, actual4D := "", "", ""
+                if len(actualFull) >= 4 {
+                        actualD2 = actualFull[2:4]
+                        actual3D = actualFull[1:4]
+                        actual4D = actualFull
+                }
+
                 sp := SesiPred{
                         Sesi:      sesi,
                         BBFS:      bbfsDigits,
                         BBFSList:  strings.Split(bbfsDigits, ""),
                         Top5:      top5,
+                        Top3D:     top3D,
+                        Top4D:     top4D,
                         IsNext:    sesi == next,
                         HasResult: actualD2 != "",
                         ActualD2:  actualD2,
+                        Actual3D:  actual3D,
+                        Actual4D:  actual4D,
                 }
                 sesiPreds = append(sesiPreds, sp)
         }

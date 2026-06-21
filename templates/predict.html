@@ -31,36 +31,85 @@
       Sesi {{.Sesi}}
     </div>
     {{if .IsNext}}<span class="sesi6-badge">NEXT</span>{{end}}
-    {{if .HasResult}}<span class="sesi6-actual">{{.ActualD2}}</span>{{end}}
+    {{if .HasResult}}<span class="sesi6-actual">{{.Actual4D}}</span>{{end}}
   </div>
 
-  {{/* BBFS Digits */}}
-  {{if .BBFSList}}
-  <div class="sesi6-digits">
-    {{range .BBFSList}}<span class="sesi6-digit {{if $.SesiPreds}}{{end}}">{{.}}</span>{{end}}
-  </div>
-  <div class="sesi6-info">6 digit · 30 kombinasi</div>
-  {{else}}
-  <div class="sesi6-nodata">Belum ada data</div>
-  {{end}}
+  {{/* ── Seksi 2D/BBFS ── */}}
+  <div class="pred-section">
+    <div class="pred-section-label">🎯 2D / BBFS</div>
+    {{if .BBFSList}}
+    <div class="sesi6-digits">
+      {{range .BBFSList}}<span class="sesi6-digit">{{.}}</span>{{end}}
+    </div>
+    <div class="sesi6-info">6 digit · 30 kombinasi</div>
+    {{else}}
+    <div class="sesi6-nodata">Belum ada data</div>
+    {{end}}
 
-  {{/* Top 5 2D */}}
-  {{if .Top5}}
-  <div class="sesi6-top2d">
-    {{range .Top5}}
-    <span class="sesi6-pair" style="color:{{colorOf .D2}}">{{.D2}}</span>
+    {{/* Top 5 2D */}}
+    {{if .Top5}}
+    <div class="sesi6-top2d">
+      {{range .Top5}}
+      <span class="sesi6-pair {{if $.SesiPreds}}{{end}}" style="color:{{colorOf .D2}}">{{.D2}}</span>
+      {{end}}
+    </div>
+    {{end}}
+
+    {{/* Tombol lihat kombinasi */}}
+    {{if .BBFS}}
+    <button class="sesi6-toggle" onclick="toggleKombo(this)">
+      Lihat 30 Kombinasi ▾
+    </button>
+    <div class="sesi6-kombo" style="display:none">
+      {{$digits := .BBFSList}}
+      {{range $i, $d1 := $digits}}{{range $j, $d2 := $digits}}{{if ne $d1 $d2}}<span class="pair-chip" style="font-size:.72rem;padding:.2rem .35rem">{{$d1}}{{$d2}}</span>{{end}}{{end}}{{end}}
+    </div>
+    {{end}}
+  </div>
+
+  {{/* ── Seksi 3D ── */}}
+  {{if .Top3D}}
+  <div class="pred-section pred-section-3d">
+    <div class="pred-section-label">🎰 3D Kandidat <span class="pred-note">× Rp500</span></div>
+    <div class="pred-nlist">
+      {{range .Top3D}}
+      <span class="pred-num pred-num-3d {{if $.SesiPreds}}{{end}}">{{.}}</span>
+      {{end}}
+    </div>
+    {{if .HasResult}}
+    <div class="pred-result-row">
+      <span class="pred-result-label">Keluar:</span>
+      {{$a3 := .Actual3D}}
+      {{range .Top3D}}
+      {{if eq . $a3}}<span class="pred-hit">✅ {{.}}</span>{{end}}
+      {{end}}
+      {{$hit3d := false}}{{range .Top3D}}{{if eq . $a3}}{{$hit3d = true}}{{end}}{{end}}
+      {{if not $hit3d}}<span class="pred-miss">❌ {{$a3}}</span>{{end}}
+    </div>
     {{end}}
   </div>
   {{end}}
 
-  {{/* Tombol lihat kombinasi */}}
-  {{if .BBFS}}
-  <button class="sesi6-toggle" onclick="toggleKombo(this)">
-    Lihat 30 Kombinasi ▾
-  </button>
-  <div class="sesi6-kombo" style="display:none">
-    {{$digits := .BBFSList}}
-    {{range $i, $d1 := $digits}}{{range $j, $d2 := $digits}}{{if ne $d1 $d2}}<span class="pair-chip" style="font-size:.72rem;padding:.2rem .35rem">{{$d1}}{{$d2}}</span>{{end}}{{end}}{{end}}
+  {{/* ── Seksi 4D ── */}}
+  {{if .Top4D}}
+  <div class="pred-section pred-section-4d">
+    <div class="pred-section-label">💎 4D Kandidat <span class="pred-note">× Rp100</span></div>
+    <div class="pred-nlist">
+      {{range .Top4D}}
+      <span class="pred-num pred-num-4d">{{.}}</span>
+      {{end}}
+    </div>
+    {{if .HasResult}}
+    <div class="pred-result-row">
+      <span class="pred-result-label">Keluar:</span>
+      {{$a4 := .Actual4D}}
+      {{range .Top4D}}
+      {{if eq . $a4}}<span class="pred-hit">✅ {{.}}</span>{{end}}
+      {{end}}
+      {{$hit4d := false}}{{range .Top4D}}{{if eq . $a4}}{{$hit4d = true}}{{end}}{{end}}
+      {{if not $hit4d}}<span class="pred-miss">❌ {{$a4}}</span>{{end}}
+    </div>
+    {{end}}
   </div>
   {{end}}
 
@@ -109,7 +158,7 @@ function toggleKombo(btn) {
 @media (max-width: 420px) {
   .sesi6-grid { grid-template-columns: 1fr; }
 }
-@media (min-width: 700px) {
+@media (min-width: 900px) {
   .sesi6-grid { grid-template-columns: repeat(3, 1fr); }
 }
 .sesi6-card {
@@ -119,7 +168,7 @@ function toggleKombo(btn) {
   padding: .75rem .7rem;
   display: flex;
   flex-direction: column;
-  gap: .45rem;
+  gap: .5rem;
 }
 .sesi6-next {
   border-color: #2b6cb0;
@@ -157,9 +206,44 @@ function toggleKombo(btn) {
   font-weight: 700;
   color: #68d391;
   background: #1a3a2a;
-  padding: .15rem .4rem;
+  padding: .15rem .5rem;
   border-radius: 4px;
+  letter-spacing: 1px;
 }
+
+/* ── Pred Sections ── */
+.pred-section {
+  background: #080f1a;
+  border: 1px solid #1a2535;
+  border-radius: 7px;
+  padding: .5rem .55rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.pred-section-3d { border-color: #2d3a1a; background: #08100a; }
+.pred-section-4d { border-color: #2a1a3a; background: #0a0810; }
+.pred-section-label {
+  font-size: .68rem;
+  font-weight: 700;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+}
+.pred-section-3d .pred-section-label { color: #68a040; }
+.pred-section-4d .pred-section-label { color: #9060c0; }
+.pred-note {
+  font-size: .6rem;
+  font-weight: 400;
+  color: #4a5568;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* 2D BBFS */
 .sesi6-digits {
   display: flex;
   gap: .3rem;
@@ -226,5 +310,59 @@ function toggleKombo(btn) {
 }
 .sesi6-toggle:hover { background: #0a1628; }
 .sesi6-kombo { padding: .35rem 0 0; }
+
+/* 3D / 4D Nomor List */
+.pred-nlist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+}
+.pred-num {
+  font-size: .78rem;
+  font-weight: 700;
+  border-radius: 5px;
+  padding: .2rem .45rem;
+  letter-spacing: 1.5px;
+  font-family: monospace;
+}
+.pred-num-3d {
+  background: #0e1f0a;
+  border: 1px solid #2a4a1a;
+  color: #88d060;
+}
+.pred-num-4d {
+  background: #12081f;
+  border: 1px solid #3a1a5a;
+  color: #b060e8;
+}
+.pred-result-row {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  flex-wrap: wrap;
+  font-size: .7rem;
+  margin-top: .1rem;
+}
+.pred-result-label {
+  color: #4a5568;
+  font-size: .68rem;
+}
+.pred-hit {
+  color: #68d391;
+  font-weight: 700;
+  font-size: .72rem;
+  background: #0a2010;
+  border: 1px solid #276749;
+  border-radius: 4px;
+  padding: .1rem .3rem;
+}
+.pred-miss {
+  color: #fc8181;
+  font-size: .72rem;
+  background: #1a0808;
+  border: 1px solid #742020;
+  border-radius: 4px;
+  padding: .1rem .3rem;
+}
 </style>
 {{end}}
