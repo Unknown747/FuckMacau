@@ -131,6 +131,28 @@ type SesiPred struct {
         ActualD2  string
 }
 
+type EkorCell struct {
+        Count int
+        Pct   int
+        Hot   bool // top 3 dari ekor asal ini
+}
+
+type EkorTransRow struct {
+        From  string
+        Total int
+        Trans [10]EkorCell
+}
+
+type EkorStatsData struct {
+        LastEkor   string
+        LastNomor  string
+        LastTgl    string
+        LastSesi   int
+        Rows       []EkorTransRow
+        EkorFreq   [10]int
+        TotalData  int
+}
+
 type PageData struct {
         Results           []Result
         Predictions       []Prediction
@@ -156,6 +178,7 @@ type PageData struct {
         BacktestRows      []BacktestRow
         SesiPreds         []SesiPred
         PredDate          string
+        EkorStats         *EkorStatsData
 }
 
 // ── DB ────────────────────────────────────────────────────────────────────────
@@ -1885,7 +1908,7 @@ func newFuncMap() template.FuncMap {
 }
 
 func loadTemplates() {
-        pages := []string{"index", "input", "paito", "predict", "stats", "backtest"}
+        pages := []string{"index", "input", "paito", "predict", "stats", "ekor-stats", "backtest"}
         tmpls = make(map[string]*template.Template, len(pages))
         for _, p := range pages {
                 t, err := template.New("").Funcs(newFuncMap()).ParseFiles(
@@ -2277,6 +2300,107 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
         })
 }
 
+// calcEkorStats membangun matriks transisi ekor 10×10 dari seluruh histori hasil
+func calcEkorStats() *EkorStatsData {
+        entries := getAllResults()
+        if len(entries) < 5 {
+                return nil
+        }
+        // Sudah urut ASC dari getAllResults
+        var ekorFreq [10]int
+        trans := [10][10]int{}
+
+        for _, e := range entries {
+                if len(e.nomor) < 4 {
+                        continue
+                }
+                ek := int(e.nomor[3] - '0')
+                if ek >= 0 && ek <= 9 {
+                        ekorFreq[ek]++
+                }
+        }
+
+        for i := 0; i < len(entries)-1; i++ {
+                if len(entries[i].nomor) < 4 || len(entries[i+1].nomor) < 4 {
+                        continue
+                }
+                from := int(entries[i].nomor[3] - '0')
+                to := int(entries[i+1].nomor[3] - '0')
+                if from >= 0 && from <= 9 && to >= 0 && to <= 9 {
+                        trans[from][to]++
+                }
+        }
+
+        var rows []EkorTransRow
+        for f := 0; f <= 9; f++ {
+                total := 0
+                for t := 0; t <= 9; t++ {
+                        total += trans[f][t]
+                }
+                row := EkorTransRow{From: strconv.Itoa(f), Total: total}
+                // Tentukan top-3 untuk penanda "hot"
+                topCounts := [10]int{}
+                for t := 0; t <= 9; t++ {
+                        topCounts[t] = trans[f][t]
+                }
+                threshold3 := 0
+                tmp := make([]int, 10)
+                copy(tmp, topCounts[:])
+                sort.Sort(sort.Reverse(sort.IntSlice(tmp)))
+                if len(tmp) >= 3 {
+                        threshold3 = tmp[2]
+                }
+                for t := 0; t <= 9; t++ {
+                        pct := 0
+                        if total > 0 {
+                                pct = int(float64(trans[f][t])*100/float64(total) + 0.5)
+                        }
+                        row.Trans[t] = EkorCell{
+                                Count: trans[f][t],
+                                Pct:   pct,
+                                Hot:   trans[f][t] > 0 && trans[f][t] >= threshold3,
+                        }
+                }
+                rows = append(rows, row)
+        }
+
+        // Cari ekor terakhir
+        lastEkor, lastNomor, lastTgl := "", "", ""
+        lastSesi := 0
+        for i := len(entries) - 1; i >= 0; i-- {
+                if len(entries[i].nomor) >= 4 {
+                        lastNomor = entries[i].nomor
+                        lastEkor = string(lastNomor[3])
+                        lastTgl = entries[i].tanggal
+                        lastSesi = entries[i].sesi
+                        break
+                }
+        }
+
+        total := 0
+        for _, e := range entries {
+                if len(e.nomor) >= 4 {
+                        total++
+                }
+        }
+
+        return &EkorStatsData{
+                LastEkor:  lastEkor,
+                LastNomor: lastNomor,
+                LastTgl:   lastTgl,
+                LastSesi:  lastSesi,
+                Rows:      rows,
+                EkorFreq:  ekorFreq,
+                TotalData: total,
+        }
+}
+
+func ekorStatsHandler(w http.ResponseWriter, r *http.Request) {
+        render(w, "ekor-stats", PageData{
+                EkorStats: calcEkorStats(),
+        })
+}
+
 func apiResultsHandler(w http.ResponseWriter, r *http.Request) {
         limit := 50
         if l := r.URL.Query().Get("limit"); l != "" {
@@ -2390,6 +2514,7 @@ func main() {
         mux.HandleFunc("/paito", paitoHandler)
         mux.HandleFunc("/predict", predictHandler)
         mux.HandleFunc("/stats", statsHandler)
+        mux.HandleFunc("/ekor-stats", ekorStatsHandler)
         mux.HandleFunc("/backtest", backtestHandler)
         mux.HandleFunc("/api/results", apiResultsHandler)
         mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
