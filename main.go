@@ -2312,7 +2312,11 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 func inputHandler(w http.ResponseWriter, r *http.Request) {
         today := nowWIB().Format("2006-01-02")
         if r.Method == "GET" {
-                render(w, "input", PageData{CurrentDate: today, Results: getResults(30)})
+                render(w, "input", PageData{
+                        CurrentDate: today,
+                        Results:     getResults(30),
+                        Message:     r.URL.Query().Get("msg"),
+                })
                 return
         }
 
@@ -2339,8 +2343,11 @@ func inputHandler(w http.ResponseWriter, r *http.Request) {
         evalPrediction(tanggal, sesi, nomor)
 
         autopMsg := autoPredict(tanggal, sesi)
-        msg := fmt.Sprintf("Result %s (Sesi %d) tersimpan. %s", nomor, sesi, autopMsg)
-        http.Redirect(w, r, "/?msg="+strings.ReplaceAll(msg, " ", "+"), http.StatusSeeOther)
+        msg := fmt.Sprintf("✅ Result %s Sesi %d tersimpan!", nomor, sesi)
+        if autopMsg != "" {
+                msg += " " + autopMsg
+        }
+        http.Redirect(w, r, "/input?msg="+strings.ReplaceAll(msg, " ", "+"), http.StatusSeeOther)
 }
 
 func inputBatchHandler(w http.ResponseWriter, r *http.Request) {
