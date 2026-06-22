@@ -2488,6 +2488,7 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                         bbfsDigits = buildBBFSFromStats(stats)
                         if len(bbfsDigits) >= 6 {
                                 savePrediction(today, sesi, bbfsDigits, "AI-LOKAL")
+                                savePredComponent(today, sesi, stats, bbfsDigits)
                         }
                 }
 
