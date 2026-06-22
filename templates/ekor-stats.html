@@ -106,47 +106,47 @@
 {{end}}
 
 <style>
-.ekor-last-card{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:1rem 1.25rem;margin-bottom:1.25rem}
-.ekor-last-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem}
+.ekor-last-card{background:#111827;border:1px solid #1e2840;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1.25rem}
+.ekor-last-label{font-size:.75rem;color:#637087;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem}
 .ekor-last-main{display:flex;align-items:center;gap:1rem;margin-bottom:.5rem}
 .ekor-last-digit{font-size:2.5rem;font-weight:800;color:#f59e0b;line-height:1;min-width:2.5rem;text-align:center}
 .ekor-last-detail{display:flex;flex-direction:column;gap:.2rem}
-.ekor-hint{font-size:.82rem;color:var(--muted);border-top:1px solid var(--border);padding-top:.5rem;margin-top:.25rem}
+.ekor-hint{font-size:.82rem;color:#637087;border-top:1px solid #1e2840;padding-top:.5rem;margin-top:.25rem}
 
 .ekor-freq-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:.35rem;margin-bottom:1.25rem}
-.ekor-freq-cell{border-radius:8px;padding:.5rem .25rem;text-align:center;border:1px solid var(--border)}
+.ekor-freq-cell{border-radius:8px;padding:.5rem .25rem;text-align:center;border:1px solid #1e2840}
 .ekor-freq-digit{font-size:1rem;font-weight:700}
-.ekor-freq-count{font-size:.72rem;color:var(--muted)}
+.ekor-freq-count{font-size:.72rem;color:#637087}
 .ekor-hot{background:rgba(245,158,11,.18);border-color:#f59e0b}
 .ekor-warm{background:rgba(59,130,246,.12);border-color:#3b82f6}
-.ekor-cold{background:var(--card-bg)}
+.ekor-cold{background:#111827}
 
 .ekor-matrix-wrap{overflow-x:auto;margin-bottom:1.25rem}
 .ekor-matrix{border-collapse:collapse;width:100%;min-width:560px}
-.ekor-matrix th,.ekor-matrix td{padding:.35rem .4rem;text-align:center;font-size:.78rem;border:1px solid var(--border)}
-.ekor-from-head{background:var(--card-bg);font-size:.72rem;color:var(--muted);min-width:90px}
-.ekor-to-head{background:var(--card-bg);font-weight:700;min-width:52px}
-.ekor-total-head{background:var(--card-bg);font-size:.72rem;color:var(--muted)}
-.ekor-from-cell{font-weight:700;background:var(--card-bg);white-space:nowrap}
+.ekor-matrix th,.ekor-matrix td{padding:.35rem .4rem;text-align:center;font-size:.78rem;border:1px solid #1e2840}
+.ekor-from-head{background:#111827;font-size:.72rem;color:#637087;min-width:90px}
+.ekor-to-head{background:#111827;font-weight:700;min-width:52px}
+.ekor-total-head{background:#111827;font-size:.72rem;color:#637087}
+.ekor-from-cell{font-weight:700;background:#111827;white-space:nowrap}
 .ekor-active-from{color:#f59e0b;background:rgba(245,158,11,.08)}
 .ekor-active-row td{background:rgba(245,158,11,.04)}
 .ekor-trans-cell{position:relative}
 .ekor-cell-hot{background:rgba(245,158,11,.22);font-weight:700}
 .ekor-cell-zero{opacity:.3}
 .ekor-count{display:block;font-weight:700;font-size:.8rem}
-.ekor-pct{display:block;font-size:.65rem;color:var(--muted)}
-.ekor-zero{color:var(--muted)}
-.ekor-total-cell{font-size:.72rem;color:var(--muted);font-weight:600}
+.ekor-pct{display:block;font-size:.65rem;color:#637087}
+.ekor-zero{color:#637087}
+.ekor-total-cell{font-size:.72rem;color:#637087;font-weight:600}
 
 .ekor-summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-bottom:1.5rem}
-.ekor-summary-card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:.75rem}
+.ekor-summary-card{background:#111827;border:1px solid #1e2840;border-radius:10px;padding:.75rem}
 .ekor-summary-active{border-color:#f59e0b;background:rgba(245,158,11,.06)}
 .ekor-summary-from{font-size:.8rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem}
 .ekor-top-item{display:flex;align-items:center;gap:.4rem;margin-bottom:.3rem}
 .ekor-top-digit{font-weight:700;font-size:.95rem;min-width:1rem;text-align:center}
-.ekor-top-bar-wrap{flex:1;background:var(--border);border-radius:3px;height:6px;overflow:hidden}
+.ekor-top-bar-wrap{flex:1;background:#1e2840;border-radius:3px;height:6px;overflow:hidden}
 .ekor-top-bar{height:6px;background:#f59e0b;border-radius:3px}
-.ekor-top-pct{font-size:.72rem;color:var(--muted);min-width:2.5rem;text-align:right}
+.ekor-top-pct{font-size:.72rem;color:#637087;min-width:2.5rem;text-align:right}
 
 .badge-yellow{background:rgba(245,158,11,.2);color:#f59e0b;border-color:#f59e0b}
 @media(max-width:480px){

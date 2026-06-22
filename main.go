@@ -622,7 +622,7 @@ func getBBFSValidations(limit int) []BBFSValidation {
 
 func calcWinRate() WinRate {
         rows, err := db.Query(`
-                SELECT bp.tanggal, bp.sesi, bp.digits
+                SELECT bp.digits, r.nomor
                 FROM bbfs_preds bp
                 INNER JOIN results r ON r.tanggal=bp.tanggal AND r.sesi=bp.sesi
                 WHERE bp.source='AI-LOKAL'`)
@@ -633,12 +633,8 @@ func calcWinRate() WinRate {
 
         var total, hits int
         for rows.Next() {
-                var tanggal, digits string
-                var sesi int
-                rows.Scan(&tanggal, &sesi, &digits)
-
-                var nomor string
-                db.QueryRow(`SELECT nomor FROM results WHERE tanggal=? AND sesi=?`, tanggal, sesi).Scan(&nomor)
+                var digits, nomor string
+                rows.Scan(&digits, &nomor)
                 if len(nomor) < 4 {
                         continue
                 }
