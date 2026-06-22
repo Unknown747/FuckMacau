@@ -2317,9 +2317,13 @@ func inputHandler(w http.ResponseWriter, r *http.Request) {
         }
 
         tanggal := r.FormValue("tanggal")
-        sesi, _ := strconv.Atoi(r.FormValue("sesi"))
+        sesi, errSesi := strconv.Atoi(r.FormValue("sesi"))
         nomor := strings.TrimSpace(r.FormValue("nomor"))
 
+        if errSesi != nil || sesi < 1 || sesi > 6 {
+                render(w, "input", PageData{Error: "Sesi tidak valid (harus 1–6)!", CurrentDate: tanggal, Results: getResults(30)})
+                return
+        }
         if len(nomor) != 4 || !isAllDigits(nomor) {
                 render(w, "input", PageData{Error: "Nomor harus tepat 4 angka (0-9)!", CurrentDate: tanggal, Results: getResults(30)})
                 return
@@ -2327,7 +2331,7 @@ func inputHandler(w http.ResponseWriter, r *http.Request) {
         if _, err := db.Exec(
                 `INSERT OR REPLACE INTO results (tanggal, sesi, nomor) VALUES (?,?,?)`,
                 tanggal, sesi, nomor); err != nil {
-                render(w, "input", PageData{Error: "Gagal simpan: " + err.Error(), CurrentDate: tanggal, Results: getResults(30)})
+                render(w, "input", PageData{Error: "Gagal menyimpan result. Coba lagi.", CurrentDate: tanggal, Results: getResults(30)})
                 return
         }
 
@@ -2426,8 +2430,10 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
 
         // Ambil result yang sudah ada untuk tanggal ini
         existingResults := map[int]string{} // sesi → full nomor 4D
-        rows, _ := db.Query(`SELECT sesi, nomor FROM results WHERE tanggal=?`, today)
-        if rows != nil {
+        rows, err := db.Query(`SELECT sesi, nomor FROM results WHERE tanggal=?`, today)
+        if err != nil {
+                log.Printf("predictHandler: query results error: %v", err)
+        } else {
                 for rows.Next() {
                         var s int
                         var n string
