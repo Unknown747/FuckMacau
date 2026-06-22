@@ -61,11 +61,49 @@
   </div>
   {{end}}
 
+  {{if .CurrentPrediction.Top3D}}
+  <div class="top3d4d-section">
+    <div class="top3d4d-label">🎰 Top 3D <span style="font-size:.65rem;color:#637087;font-weight:400">(10 kandidat lolos filter)</span></div>
+    <div class="top3d4d-row">
+      {{range .CurrentPrediction.Top3D}}
+      <span class="topnd-badge badge-3d">{{.}}</span>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{if .CurrentPrediction.Top4D}}
+  <div class="top3d4d-section">
+    <div class="top3d4d-label">💎 Top 4D <span style="font-size:.65rem;color:#637087;font-weight:400">(10 kandidat lolos filter)</span></div>
+    <div class="top3d4d-row">
+      {{range .CurrentPrediction.Top4D}}
+      <span class="topnd-badge badge-4d">{{.}}</span>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
   <a href="/predict" class="btn btn-primary btn-block" style="margin-top:1rem">
     🔮 Lihat Prediksi Detail
   </a>
 </div>
 {{end}}
+
+<style>
+.top3d4d-section { margin-top:.6rem; }
+.top3d4d-label { font-size:.72rem; font-weight:700; color:#a0aec0; margin-bottom:.35rem; }
+.top3d4d-row { display:flex; flex-wrap:wrap; gap:.35rem; }
+.topnd-badge {
+  font-family: monospace;
+  font-size: .82rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  padding: .25rem .45rem;
+  border-radius: 5px;
+}
+.badge-3d { background:#0a1a0f; color:#68d391; border:1px solid #276749; }
+.badge-4d { background:#0a0818; color:#b794f4; border:1px solid #553c9a; }
+</style>
 
 {{/* ── Info: input terlambat oke ── */}}
 <div class="late-input-info">

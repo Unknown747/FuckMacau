@@ -2,67 +2,96 @@
 {{define "content"}}
 <div class="page-header">
   <h1>📈 Backtest Prediksi</h1>
-  <p class="subtitle">Riwayat akurasi prediksi BBFS dari awal hingga sekarang</p>
+  <p class="subtitle">Audit akurasi 2D/BBFS · 3D · 4D dari seluruh riwayat prediksi</p>
 </div>
 
-{{/* ── Ringkasan ── */}}
-<div class="card">
-  <div class="card-title">🎯 Ringkasan Akurasi</div>
-  <div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:.75rem">
-    <div style="flex:1;min-width:80px;text-align:center">
-      <div style="font-size:2rem;font-weight:800;color:{{pctClass .WR.Pct | printf "%s"}}
-        {{- if ge .WR.Pct 50}}#68d391{{else if ge .WR.Pct 30}}#f6ad55{{else}}#fc8181{{end}}">{{.WR.Pct}}%</div>
-      <div style="font-size:.72rem;color:#637087;margin-top:.2rem">Win Rate</div>
-    </div>
-    <div style="flex:1;min-width:80px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#68d391">{{.WR.Hits}}</div>
-      <div style="font-size:.72rem;color:#637087;margin-top:.2rem">✅ HIT</div>
-    </div>
-    <div style="flex:1;min-width:80px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#fc8181">{{.WR.Miss}}</div>
-      <div style="font-size:.72rem;color:#637087;margin-top:.2rem">❌ MISS</div>
-    </div>
-    <div style="flex:1;min-width:80px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#e2e8f0">{{.WR.Total}}</div>
-      <div style="font-size:.72rem;color:#637087;margin-top:.2rem">Total Eval</div>
-    </div>
+{{/* ── Ringkasan 3-baris ── */}}
+<div class="bt-summary-grid">
+
+  {{/* 2D/BBFS */}}
+  <div class="bt-summary-card">
+    <div class="bt-summary-title">🎯 BBFS 6-Digit (2D)</div>
+    <div class="bt-summary-pct {{if ge .WR.Pct 50}}bt-good{{else if ge .WR.Pct 30}}bt-med{{else}}bt-bad{{end}}">{{.WR.Pct}}%</div>
+    <div class="bt-summary-sub">✅ {{.WR.Hits}} HIT · ❌ {{.WR.Miss}} MISS · {{.WR.Total}} eval</div>
+    <div class="bt-bar"><div class="bt-bar-fill {{if ge .WR.Pct 30}}bt-fill-ok{{else}}bt-fill-bad{{end}}" style="width:{{.WR.Pct}}%"></div></div>
+    <div class="bt-note">Coverage 30% (30 dari 100 kombinasi). Acak = 30%.</div>
   </div>
-  <div style="background:#0d1520;border-radius:6px;padding:.5rem .75rem;font-size:.75rem;color:#637087;line-height:1.6">
-    💡 BBFS 6 digit = <strong style="color:#90e0ff">30 kombinasi</strong> dari 100 kemungkinan (coverage 30%).
-    Probabilitas acak = 30%. Win rate di atas 30% berarti prediksi lebih baik dari acak.
+
+  {{/* 3D */}}
+  <div class="bt-summary-card">
+    <div class="bt-summary-title">🎰 Top-10 3D</div>
+    <div class="bt-summary-pct {{if ge .WR3D.Pct 3}}bt-good{{else if ge .WR3D.Pct 1}}bt-med{{else}}bt-bad{{end}}">{{.WR3D.Pct}}%</div>
+    <div class="bt-summary-sub">✅ {{.WR3D.Hits}} HIT · ❌ {{.WR3D.Miss}} MISS · {{.WR3D.Total}} eval</div>
+    <div class="bt-bar"><div class="bt-bar-fill {{if ge .WR3D.Pct 1}}bt-fill-ok{{else}}bt-fill-bad{{end}}" style="width:{{if gt .WR3D.Pct 100}}100{{else}}{{.WR3D.Pct}}{{end}}%"></div></div>
+    <div class="bt-note">Coverage 1% (10 dari 1.000 kombinasi). Acak = 1%.</div>
   </div>
+
+  {{/* 4D */}}
+  <div class="bt-summary-card">
+    <div class="bt-summary-title">💎 Top-10 4D</div>
+    <div class="bt-summary-pct {{if ge .WR4D.Hits 1}}bt-good{{else}}bt-bad{{end}}">{{.WR4D.Hits}} HIT</div>
+    <div class="bt-summary-sub">❌ {{.WR4D.Miss}} MISS · {{.WR4D.Total}} eval</div>
+    <div class="bt-bar"><div class="bt-bar-fill bt-fill-ok" style="width:{{if gt .WR4D.Pct 100}}100{{else}}{{.WR4D.Pct}}{{end}}%"></div></div>
+    <div class="bt-note">Coverage 0.01% (10 dari 10.000). Tiap HIT sangat berharga.</div>
+  </div>
+
 </div>
+
+<style>
+.bt-summary-grid { display:grid; grid-template-columns:1fr; gap:.6rem; margin-bottom:.65rem; }
+@media(min-width:640px){ .bt-summary-grid { grid-template-columns:repeat(3,1fr); } }
+.bt-summary-card { background:#0d1220; border:1px solid #1e2d3d; border-radius:10px; padding:.75rem; }
+.bt-summary-title { font-size:.7rem; font-weight:700; color:#718096; margin-bottom:.4rem; }
+.bt-summary-pct { font-size:2rem; font-weight:800; margin-bottom:.2rem; }
+.bt-good { color:#68d391; }
+.bt-med  { color:#f6ad55; }
+.bt-bad  { color:#fc8181; }
+.bt-summary-sub { font-size:.7rem; color:#637087; margin-bottom:.4rem; }
+.bt-bar { background:#1a2535; border-radius:3px; height:5px; margin-bottom:.4rem; }
+.bt-bar-fill { border-radius:3px; height:5px; transition:width .3s; }
+.bt-fill-ok  { background:#68d391; }
+.bt-fill-bad { background:#fc8181; }
+.bt-note { font-size:.65rem; color:#4a5568; }
+</style>
 
 {{/* ── Tabel Riwayat ── */}}
 {{if .BacktestRows}}
 <div class="card">
   <div class="card-title" style="margin-bottom:.75rem">📋 Riwayat Prediksi (Terbaru di Atas)</div>
   <div class="table-scroll">
-  <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+  <table style="width:100%;border-collapse:collapse;font-size:.78rem">
     <thead>
       <tr style="color:#637087;border-bottom:1px solid #1e2d3d">
-        <th style="text-align:left;padding:.4rem .5rem">Tanggal</th>
-        <th style="text-align:center;padding:.4rem .5rem">Sesi</th>
-        <th style="text-align:left;padding:.4rem .5rem">BBFS</th>
-        <th style="text-align:center;padding:.4rem .5rem">Top 2D</th>
-        <th style="text-align:center;padding:.4rem .5rem">Aktual</th>
-        <th style="text-align:center;padding:.4rem .5rem">Hasil</th>
-        <th style="text-align:right;padding:.4rem .5rem">Win Rate</th>
+        <th style="text-align:left;padding:.35rem .45rem">Tanggal</th>
+        <th style="text-align:center;padding:.35rem .45rem">Sesi</th>
+        <th style="text-align:left;padding:.35rem .45rem">BBFS</th>
+        <th style="text-align:center;padding:.35rem .45rem">Aktual</th>
+        <th style="text-align:center;padding:.35rem .45rem">2D</th>
+        <th style="text-align:center;padding:.35rem .45rem">3D</th>
+        <th style="text-align:center;padding:.35rem .45rem">4D</th>
+        <th style="text-align:right;padding:.35rem .45rem">WR 2D</th>
       </tr>
     </thead>
     <tbody>
     {{range .BacktestRows}}
     <tr style="border-bottom:1px solid #0d1520{{if .IsHit}};background:#0d1f0d{{end}}">
-      <td style="padding:.4rem .5rem;color:#a0aec0">{{.Tanggal | formatDate}}</td>
-      <td style="text-align:center;padding:.4rem .5rem;color:#637087">S{{.Sesi}}</td>
-      <td style="padding:.4rem .5rem;font-family:monospace;letter-spacing:.1em;color:#90e0ff">{{.BBFS}}</td>
-      <td style="text-align:center;padding:.4rem .5rem;font-weight:700;color:{{colorOf .TopD2}}">{{.TopD2}}</td>
-      <td style="text-align:center;padding:.4rem .5rem;font-weight:700;color:{{colorOf .ActualD2}}">{{.ActualD2}}</td>
-      <td style="text-align:center;padding:.4rem .5rem">
-        {{if .IsHit}}<span style="color:#68d391;font-weight:700">✅ HIT</span>
-        {{else}}<span style="color:#fc8181">❌ MISS</span>{{end}}
+      <td style="padding:.35rem .45rem;color:#a0aec0">{{.Tanggal | formatDate}}</td>
+      <td style="text-align:center;padding:.35rem .45rem;color:#637087">S{{.Sesi}}</td>
+      <td style="padding:.35rem .45rem;font-family:monospace;letter-spacing:.1em;color:#90e0ff">{{.BBFS}}</td>
+      <td style="text-align:center;padding:.35rem .45rem;font-family:monospace;font-weight:700;color:#e2e8f0">{{.Actual4D}}</td>
+      <td style="text-align:center;padding:.35rem .45rem">
+        {{if .IsHit}}<span style="color:#68d391;font-weight:700">✅{{.ActualD2}}</span>
+        {{else}}<span style="color:#637087">❌{{.ActualD2}}</span>{{end}}
       </td>
-      <td style="text-align:right;padding:.4rem .5rem;color:{{if ge .RunPct 30}}#68d391{{else}}#fc8181{{end}}">
+      <td style="text-align:center;padding:.35rem .45rem">
+        {{if .IsHit3D}}<span style="color:#68d391;font-weight:700">✅{{.Actual3D}}</span>
+        {{else}}<span style="color:#4a5568">❌{{.Actual3D}}</span>{{end}}
+      </td>
+      <td style="text-align:center;padding:.35rem .45rem">
+        {{if .IsHit4D}}<span style="color:#b794f4;font-weight:700">✅{{.Actual4D}}</span>
+        {{else}}<span style="color:#4a5568">—</span>{{end}}
+      </td>
+      <td style="text-align:right;padding:.35rem .45rem;color:{{if ge .RunPct 30}}#68d391{{else}}#fc8181{{end}}">
         {{.RunHits}}/{{.RunTotal}} ({{.RunPct}}%)
       </td>
     </tr>

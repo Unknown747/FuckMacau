@@ -48,6 +48,8 @@ type D2Stat struct {
 type Prediction struct {
         Metode   string
         Top2D    []D2Stat
+        Top3D    []string
+        Top4D    []string
         BBFS     string
         BBFSList []string
         Alasan   string
@@ -110,15 +112,23 @@ type Stats struct {
 }
 
 type BacktestRow struct {
-        Tanggal  string
-        Sesi     int
-        BBFS     string
-        TopD2    string
-        IsHit    bool
-        ActualD2 string
-        RunTotal int
-        RunHits  int
-        RunPct   int
+        Tanggal    string
+        Sesi       int
+        BBFS       string
+        TopD2      string
+        IsHit      bool
+        IsHit3D    bool
+        IsHit4D    bool
+        ActualD2   string
+        Actual3D   string
+        Actual4D   string
+        RunTotal   int
+        RunHits    int
+        RunPct     int
+        RunHits3D  int
+        RunPct3D   int
+        RunHits4D  int
+        RunPct4D   int
 }
 
 type SesiPred struct {
@@ -175,6 +185,8 @@ type PageData struct {
         Stats             *Stats
         Validations       []BBFSValidation
         WR                WinRate
+        WR3D              WinRate
+        WR4D              WinRate
         SesiStats         []SesiStat
         CurrentPrediction *Prediction
         CompStats         []CompStatRow
@@ -1693,14 +1705,14 @@ func buildTop3D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
         var result []string
         for _, c := range cands {
                 result = append(result, c.n)
-                if len(result) >= 5 {
+                if len(result) >= 10 {
                         break
                 }
         }
         return result
 }
 
-// buildTop4D menghasilkan top-5 kandidat 4D (AS+KOP+KEPALA+EKOR) per sesi.
+// buildTop4D menghasilkan top-10 kandidat 4D (AS+KOP+KEPALA+EKOR) per sesi.
 func buildTop4D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
         now := nowWIB()
 
@@ -1775,7 +1787,7 @@ func buildTop4D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
         var result []string
         for _, c := range cands {
                 result = append(result, c.n)
-                if len(result) >= 5 {
+                if len(result) >= 10 {
                         break
                 }
         }
@@ -2255,9 +2267,15 @@ func getPredictionForDate(date string, sesi int) *Prediction {
                 top10 = top10[:10]
         }
 
+        allEntries := getAllResults()
+        top3D := buildTop3D(stats, allEntries, sesi)
+        top4D := buildTop4D(stats, allEntries, sesi)
+
         return &Prediction{
                 Metode:   "AI-LOKAL",
                 Top2D:    top10,
+                Top3D:    top3D,
+                Top4D:    top4D,
                 BBFS:     digits,
                 BBFSList: strings.Split(digits, ""),
                 Alasan:   buildAlasan(top10, sesi),
@@ -2514,14 +2532,28 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
         })
 }
 
+func containsStr(slice []string, s string) bool {
+        for _, v := range slice {
+                if v == s {
+                        return true
+                }
+        }
+        return false
+}
+
 func backtestHandler(w http.ResponseWriter, r *http.Request) {
-        // Pre-compute top 2D per sesi SEBELUM membuka query utama (hindari konflik koneksi SQLite)
+        // Pre-compute prediksi per sesi (2D top, 3D top-10, 4D top-10)
+        allEntries := getAllResults()
         topD2BySesi := map[int]string{}
+        top3DBySesi := map[int][]string{}
+        top4DBySesi := map[int][]string{}
         for s := 1; s <= 6; s++ {
                 st := analyzeD2Enhanced(s)
                 if len(st) > 0 {
                         topD2BySesi[s] = st[0].D2
                 }
+                top3DBySesi[s] = buildTop3D(st, allEntries, s)
+                top4DBySesi[s] = buildTop4D(st, allEntries, s)
         }
 
         // Ambil semua prediksi AI-LOKAL yang sudah ada result-nya, join langsung
@@ -2538,7 +2570,7 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
         defer rows.Close()
 
         var list []BacktestRow
-        total, hits := 0, 0
+        total, hits, hits3D, hits4D := 0, 0, 0, 0
         for rows.Next() {
                 var tanggal, digits, nomor string
                 var sesi int
@@ -2548,23 +2580,44 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
                         continue
                 }
                 actualD2 := nomor[2:4]
+                actual3D := nomor[1:4]
+                actual4D := nomor
                 hit := isHit(digits, actualD2)
+                hit3D := containsStr(top3DBySesi[sesi], actual3D)
+                hit4D := containsStr(top4DBySesi[sesi], actual4D)
 
                 total++
                 if hit {
                         hits++
                 }
-                list = append(list, BacktestRow{
-                        Tanggal:  tanggal,
-                        Sesi:     sesi,
-                        BBFS:     digits,
-                        TopD2:    topD2BySesi[sesi],
-                        IsHit:    hit,
-                        ActualD2: actualD2,
-                        RunTotal: total,
-                        RunHits:  hits,
-                        RunPct:   hits * 100 / total,
-                })
+                if hit3D {
+                        hits3D++
+                }
+                if hit4D {
+                        hits4D++
+                }
+                row := BacktestRow{
+                        Tanggal:   tanggal,
+                        Sesi:      sesi,
+                        BBFS:      digits,
+                        TopD2:     topD2BySesi[sesi],
+                        IsHit:     hit,
+                        IsHit3D:   hit3D,
+                        IsHit4D:   hit4D,
+                        ActualD2:  actualD2,
+                        Actual3D:  actual3D,
+                        Actual4D:  actual4D,
+                        RunTotal:  total,
+                        RunHits:   hits,
+                        RunPct:    hits * 100 / total,
+                        RunHits3D: hits3D,
+                        RunHits4D: hits4D,
+                }
+                if total > 0 {
+                        row.RunPct3D = hits3D * 100 / total
+                        row.RunPct4D = hits4D * 100 / total
+                }
+                list = append(list, row)
         }
 
         // Balik urutan: terbaru di atas
@@ -2576,7 +2629,15 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
         if total > 0 {
                 wr.Pct = hits * 100 / total
         }
-        render(w, "backtest", PageData{WR: wr, BacktestRows: list})
+        wr3D := WinRate{Total: total, Hits: hits3D, Miss: total - hits3D}
+        if total > 0 {
+                wr3D.Pct = hits3D * 100 / total
+        }
+        wr4D := WinRate{Total: total, Hits: hits4D, Miss: total - hits4D}
+        if total > 0 {
+                wr4D.Pct = hits4D * 100 / total
+        }
+        render(w, "backtest", PageData{WR: wr, WR3D: wr3D, WR4D: wr4D, BacktestRows: list})
 }
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {
