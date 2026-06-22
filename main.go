@@ -444,7 +444,11 @@ func getCompStats() []CompStatRow {
 func getResults(limit int) []Result {
         rows, err := db.Query(
                 `SELECT id, tanggal, sesi, nomor, COALESCE(created_at,'')
-                 FROM results ORDER BY tanggal DESC, sesi DESC LIMIT ?`, limit)
+                 FROM results
+                 WHERE tanggal IN (
+                   SELECT DISTINCT tanggal FROM results ORDER BY tanggal DESC LIMIT ?
+                 )
+                 ORDER BY tanggal DESC, sesi DESC`, limit)
         if err != nil {
                 return nil
         }

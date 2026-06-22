@@ -91,7 +91,7 @@ function colorD2(d2) {
   return colors[Math.floor(n / 10) % 10];
 }
 
-fetch('/api/results?limit=120')
+fetch('/api/results?limit=30')
   .then(function(r) { return r.json(); })
   .then(function(data) {
     var tbody = document.getElementById('gridBody');
