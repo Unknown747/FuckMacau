@@ -118,8 +118,9 @@ fetch('/api/results?limit=120')
         if (!nomor) return '<td style="text-align:center;padding:.6rem .4rem;color:#2d3748;font-size:1rem">—</td>';
         var d2 = nomor.length >= 4 ? nomor.slice(2) : '';
         var color = d2 ? colorD2(d2) : '#4fd1c5';
-        return '<td style="text-align:center;padding:.55rem .4rem">' +
+        return '<td style="text-align:center;padding:.55rem .4rem;position:relative" class="cell-hapus" data-tgl="' + tanggal + '" data-sesi="' + s + '">' +
           '<span style="font-size:1.1rem;font-weight:800;color:' + color + ';letter-spacing:.06em;font-family:monospace">' + nomor + '</span>' +
+          '<button onclick="hapusResult(\'' + tanggal + '\',' + s + ',this)" title="Hapus" style="position:absolute;top:1px;right:1px;background:none;border:none;color:#c53030;font-size:.7rem;cursor:pointer;opacity:0;padding:1px 3px;line-height:1">✕</button>' +
           '</td>';
       }).join('');
       return '<tr style="background:' + bg + ';border-bottom:1px solid #111e2b">' +
@@ -132,5 +133,27 @@ fetch('/api/results?limit=120')
     document.getElementById('gridBody').innerHTML =
       '<tr><td colspan="7" style="text-align:center;padding:1.5rem;color:#637087">Gagal memuat data</td></tr>';
   });
+
+// Tampilkan tombol hapus saat hover
+document.getElementById('gridTable').addEventListener('mouseover', function(e) {
+  var td = e.target.closest('.cell-hapus');
+  if (td) { var btn = td.querySelector('button'); if (btn) btn.style.opacity = '1'; }
+});
+document.getElementById('gridTable').addEventListener('mouseout', function(e) {
+  var td = e.target.closest('.cell-hapus');
+  if (td) { var btn = td.querySelector('button'); if (btn) btn.style.opacity = '0'; }
+});
+
+function hapusResult(tanggal, sesi, btn) {
+  var sesiLabel = ['','00:01','13:00','16:00','19:00','22:00','23:00'][sesi] || 'Sesi '+sesi;
+  if (!confirm('Hapus ' + tanggal + ' ' + sesiLabel + '?')) return;
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/delete-result';
+  var f1 = document.createElement('input'); f1.name='tanggal'; f1.value=tanggal; form.appendChild(f1);
+  var f2 = document.createElement('input'); f2.name='sesi'; f2.value=sesi; form.appendChild(f2);
+  document.body.appendChild(form);
+  form.submit();
+}
 </script>
 {{end}}

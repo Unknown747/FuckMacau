@@ -2412,7 +2412,7 @@ func inputBatchHandler(w http.ResponseWriter, r *http.Request) {
                 autoPredict(lastTanggal, lastSesi)
         }
         http.Redirect(w, r,
-                fmt.Sprintf("/?msg=Batch+selesai:+%d+sukses,+%d+gagal.", ok, fail),
+                fmt.Sprintf("/input?msg=Batch+selesai:+%d+sukses,+%d+gagal.", ok, fail),
                 http.StatusSeeOther)
 }
 
@@ -2759,6 +2759,31 @@ func apiResultsHandler(w http.ResponseWriter, r *http.Request) {
         json.NewEncoder(w).Encode(getResults(limit))
 }
 
+func deleteResultHandler(w http.ResponseWriter, r *http.Request) {
+        if r.Method != "POST" {
+                http.Redirect(w, r, "/input", http.StatusSeeOther)
+                return
+        }
+        tanggal := strings.TrimSpace(r.FormValue("tanggal"))
+        sesi, err := strconv.Atoi(r.FormValue("sesi"))
+        if err != nil || tanggal == "" || sesi < 1 || sesi > 6 {
+                http.Redirect(w, r, "/input?msg=Data+tidak+valid", http.StatusSeeOther)
+                return
+        }
+        res, err := db.Exec(`DELETE FROM results WHERE tanggal=? AND sesi=?`, tanggal, sesi)
+        if err != nil {
+                http.Redirect(w, r, "/input?msg=Gagal+hapus+data", http.StatusSeeOther)
+                return
+        }
+        n, _ := res.RowsAffected()
+        if n == 0 {
+                http.Redirect(w, r, "/input?msg=Data+tidak+ditemukan", http.StatusSeeOther)
+                return
+        }
+        msg := fmt.Sprintf("Hapus+%s+sesi+%d+berhasil", tanggal, sesi)
+        http.Redirect(w, r, "/input?msg="+msg, http.StatusSeeOther)
+}
+
 // ── Seed historis ─────────────────────────────────────────────────────────────
 
 func seedPredictions() {
@@ -2920,6 +2945,7 @@ func main() {
         mux.HandleFunc("/ekor-stats", ekorStatsHandler)
         mux.HandleFunc("/backtest", backtestHandler)
         mux.HandleFunc("/api/results", apiResultsHandler)
+        mux.HandleFunc("/delete-result", deleteResultHandler)
         mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
         log.Println("🎰 Toto Macau 4D Predictor → http://0.0.0.0:5000")
