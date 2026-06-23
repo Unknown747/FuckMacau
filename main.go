@@ -1344,13 +1344,15 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
                 switch {
                 case s.lastSesiIdx > 25:
-                        s.gap = 3.0
+                        s.gap = 3.5
                 case s.lastSesiIdx > 18:
-                        s.gap = 2.0
+                        s.gap = 2.5
                 case s.lastSesiIdx > 12:
-                        s.gap = 1.2
+                        s.gap = 1.8
                 case s.lastSesiIdx > 8:
-                        s.gap = 0.5
+                        s.gap = 1.0
+                case s.lastSesiIdx > 5:
+                        s.gap = 0.5 // sebelumnya tidak ada boost di sini
                 default:
                         s.gap = 0
                 }
@@ -1487,7 +1489,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         s.markov*gw.MarkovMult +
                         s.streak +
                         s.corr*5.5*gw.CorrMult +
-                        s.gap*1.2 +
+                        s.gap*2.0 +
                         s.ekorBoost
                 lastSeen := s.lastIdx
                 if s.lastSesiIdx < lastSeen {
