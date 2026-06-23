@@ -132,17 +132,19 @@ type BacktestRow struct {
 }
 
 type SesiPred struct {
-        Sesi      int
-        BBFS      string
-        BBFSList  []string
-        Top5      []D2Stat
-        Top3D     []string
-        Top4D     []string
-        IsNext    bool
-        HasResult bool
-        ActualD2  string
-        Actual3D  string
-        Actual4D  string
+        Sesi           int
+        BBFS           string
+        BBFSList       []string
+        Top5           []D2Stat
+        Top3D          []string
+        Top4D          []string
+        FilteredTop4D  []string // 4D dari permutasi BBFS, diranking AI
+        FilteredTop3D  []string // 3D dari permutasi BBFS, diranking AI
+        IsNext         bool
+        HasResult      bool
+        ActualD2       string
+        Actual3D       string
+        Actual4D       string
 }
 
 type EkorCell struct {
@@ -1496,7 +1498,7 @@ func buildTop3D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
         var result []string
         for _, c := range cands {
                 result = append(result, c.n)
-                if len(result) >= 20 {
+                if len(result) >= 5 {
                         break
                 }
         }
@@ -1596,7 +1598,7 @@ func buildTop4D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
         var result []string
         for _, c := range cands {
                 result = append(result, c.n)
-                if len(result) >= 20 {
+                if len(result) >= 8 {
                         break
                 }
         }
@@ -1789,6 +1791,88 @@ func buildBBFSFromStats(stats []D2Stat) string {
         return strings.Join(bestCombo, "")
 }
 
+// buildFilteredFromBBFS menghasilkan top-scored 4D dan 3D dari permutasi digit BBFS.
+// Semua angka output hanya menggunakan digit yang ada di BBFS (tidak ada digit luar).
+// Scoring menggunakan skor pasangan berurutan dari d2Stats.
+// maxN4D=15, maxN3D=20 → total ~35 angka (cocok untuk pasang efisien).
+func buildFilteredFromBBFS(digits string, stats []D2Stat, maxN4D, maxN3D int) ([]string, []string) {
+        if len(digits) < 3 {
+                return nil, nil
+        }
+        pairScore := map[string]float64{}
+        for _, s := range stats {
+                pairScore[s.D2] = s.Score
+        }
+        digs := strings.Split(digits, "")
+        n := len(digs)
+
+        type scored struct {
+                num   string
+                score float64
+        }
+
+        // 4D: P(7,4) = 840 permutasi
+        var cands4D []scored
+        if n >= 4 {
+                for i := 0; i < n; i++ {
+                        for j := 0; j < n; j++ {
+                                if j == i {
+                                        continue
+                                }
+                                for k := 0; k < n; k++ {
+                                        if k == i || k == j {
+                                                continue
+                                        }
+                                        for l := 0; l < n; l++ {
+                                                if l == i || l == j || l == k {
+                                                        continue
+                                                }
+                                                num := digs[i] + digs[j] + digs[k] + digs[l]
+                                                score := pairScore[digs[i]+digs[j]] +
+                                                        pairScore[digs[j]+digs[k]] +
+                                                        pairScore[digs[k]+digs[l]]
+                                                cands4D = append(cands4D, scored{num, score})
+                                        }
+                                }
+                        }
+                }
+        }
+        sort.Slice(cands4D, func(i, j int) bool { return cands4D[i].score > cands4D[j].score })
+        var top4D []string
+        for _, c := range cands4D {
+                if len(top4D) >= maxN4D {
+                        break
+                }
+                top4D = append(top4D, c.num)
+        }
+
+        // 3D: P(7,3) = 210 permutasi
+        var cands3D []scored
+        for i := 0; i < n; i++ {
+                for j := 0; j < n; j++ {
+                        if j == i {
+                                continue
+                        }
+                        for k := 0; k < n; k++ {
+                                if k == i || k == j {
+                                        continue
+                                }
+                                num := digs[i] + digs[j] + digs[k]
+                                score := pairScore[digs[i]+digs[j]] + pairScore[digs[j]+digs[k]]
+                                cands3D = append(cands3D, scored{num, score})
+                        }
+                }
+        }
+        sort.Slice(cands3D, func(i, j int) bool { return cands3D[i].score > cands3D[j].score })
+        var top3D []string
+        for _, c := range cands3D {
+                if len(top3D) >= maxN3D {
+                        break
+                }
+                top3D = append(top3D, c.num)
+        }
+        return top4D, top3D
+}
 
 func buildAlasan(stats []D2Stat, sesi int) string {
         if len(stats) == 0 {
@@ -1880,6 +1964,9 @@ func newFuncMap() template.FuncMap {
                                 return "val-hit"
                         }
                         return "val-miss"
+                },
+                "joinStr": func(sl []string, sep string) string {
+                        return strings.Join(sl, sep)
                 },
                 "hitLabel": func(v BBFSValidation) string {
                         if !v.HasResult {
@@ -2227,6 +2314,9 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                 top4D := buildTop4D(stats, allEntries, sesi)
                 top3D := filter3DByCoverage(buildTop3D(stats, allEntries, sesi), top4D)
 
+                // Filtered: 15 4D + 20 3D dari permutasi digit BBFS, diranking AI
+                fTop4D, fTop3D := buildFilteredFromBBFS(bbfsDigits, stats, 15, 20)
+
                 actualFull := existingResults[sesi] // nomor 4D penuh
                 actualD2, actual3D, actual4D := "", "", ""
                 if len(actualFull) >= 4 {
@@ -2236,17 +2326,19 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                 }
 
                 sp := SesiPred{
-                        Sesi:      sesi,
-                        BBFS:      bbfsDigits,
-                        BBFSList:  strings.Split(bbfsDigits, ""),
-                        Top5:      top5,
-                        Top3D:     top3D,
-                        Top4D:     top4D,
-                        IsNext:    sesi == next,
-                        HasResult: actualD2 != "",
-                        ActualD2:  actualD2,
-                        Actual3D:  actual3D,
-                        Actual4D:  actual4D,
+                        Sesi:          sesi,
+                        BBFS:          bbfsDigits,
+                        BBFSList:      strings.Split(bbfsDigits, ""),
+                        Top5:          top5,
+                        Top3D:         top3D,
+                        Top4D:         top4D,
+                        FilteredTop4D: fTop4D,
+                        FilteredTop3D: fTop3D,
+                        IsNext:        sesi == next,
+                        HasResult:     actualD2 != "",
+                        ActualD2:      actualD2,
+                        Actual3D:      actual3D,
+                        Actual4D:      actual4D,
                 }
                 sesiPreds = append(sesiPreds, sp)
         }

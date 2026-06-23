@@ -25,8 +25,8 @@
 <div class="sesi6-card {{if .IsNext}}sesi6-next{{else if .HasResult}}sesi6-done{{end}}"
   data-sesi="{{.Sesi}}"
   data-has-bbfs="{{if .BBFS}}1{{else}}0{{end}}"
-  data-count3d="{{len .Top3D}}"
-  data-count4d="{{len .Top4D}}">
+  data-count3d="{{len .FilteredTop3D}}"
+  data-count4d="{{len .FilteredTop4D}}">
 
   {{/* Data teks untuk clipboard sesi ini (hidden) */}}
   <textarea class="sesi-copy-text" readonly style="position:absolute;left:-9999px;opacity:0" aria-hidden="true">{{$.PredDate | formatDate}} Sesi {{.Sesi}}{{if .HasResult}} (Keluar: {{.Actual4D}}){{end}}
@@ -34,6 +34,11 @@ BBFS : {{range .BBFSList}}{{.}} {{end}}
 2D   : {{range .Top5}}{{.D2}} {{end}}
 3D   : {{range .Top3D}}{{.}} {{end}}
 4D   : {{range .Top4D}}{{.}} {{end}}</textarea>
+  {{/* Hidden textarea khusus format pasang 3D+4D */}}
+  {{if and .FilteredTop4D .FilteredTop3D}}
+  <textarea class="sesi-copy-pasang" readonly style="position:absolute;left:-9999px;opacity:0" aria-hidden="true">{{joinStr .FilteredTop4D "*"}}*{{joinStr .FilteredTop3D "*"}}</textarea>
+  <textarea class="sesi-copy-2d" readonly style="position:absolute;left:-9999px;opacity:0" aria-hidden="true">{{range $i,$v := .Top5}}{{if $i}}*{{end}}{{$v.D2}}{{end}}</textarea>
+  {{end}}
 
   {{/* Header kartu */}}
   <div class="sesi6-head">
@@ -81,49 +86,57 @@ BBFS : {{range .BBFSList}}{{.}} {{end}}
     {{end}}
   </div>
 
-  {{/* ── Seksi 3D ── */}}
-  {{if .Top3D}}
-  <div class="pred-section pred-section-3d">
-    <div class="pred-section-label">🎰 3D Kandidat <span class="pred-note">× Rp500</span></div>
+  {{/* ── Seksi 4D dari BBFS ── */}}
+  {{if .FilteredTop4D}}
+  <div class="pred-section pred-section-4d">
+    <div class="pred-section-label">💎 4D BBFS <span class="pred-note">top {{len .FilteredTop4D}} dari 840</span></div>
     <div class="pred-nlist">
-      {{range .Top3D}}
-      <span class="pred-num pred-num-3d {{if $.SesiPreds}}{{end}}">{{.}}</span>
+      {{$a4 := .Actual4D}}
+      {{range .FilteredTop4D}}
+      <span class="pred-num pred-num-4d{{if and $a4 (eq . $a4)}} pred-hit-chip{{end}}">{{.}}</span>
       {{end}}
     </div>
     {{if .HasResult}}
     <div class="pred-result-row">
       <span class="pred-result-label">Keluar:</span>
-      {{$a3 := .Actual3D}}
-      {{range .Top3D}}
-      {{if eq . $a3}}<span class="pred-hit">✅ {{.}}</span>{{end}}
-      {{end}}
-      {{$hit3d := false}}{{range .Top3D}}{{if eq . $a3}}{{$hit3d = true}}{{end}}{{end}}
-      {{if not $hit3d}}<span class="pred-miss">❌ {{$a3}}</span>{{end}}
+      {{$hit4d := false}}{{range .FilteredTop4D}}{{if eq . $a4}}{{$hit4d = true}}{{end}}{{end}}
+      {{if $hit4d}}<span class="pred-hit">✅ {{$a4}}</span>{{else}}<span class="pred-miss">❌ {{$a4}}</span>{{end}}
     </div>
     {{end}}
   </div>
   {{end}}
 
-  {{/* ── Seksi 4D ── */}}
-  {{if .Top4D}}
-  <div class="pred-section pred-section-4d">
-    <div class="pred-section-label">💎 4D Kandidat <span class="pred-note">× Rp100</span></div>
+  {{/* ── Seksi 3D dari BBFS ── */}}
+  {{if .FilteredTop3D}}
+  <div class="pred-section pred-section-3d">
+    <div class="pred-section-label">🎰 3D BBFS <span class="pred-note">top {{len .FilteredTop3D}} dari 210</span></div>
     <div class="pred-nlist">
-      {{range .Top4D}}
-      <span class="pred-num pred-num-4d">{{.}}</span>
+      {{$a3 := .Actual3D}}
+      {{range .FilteredTop3D}}
+      <span class="pred-num pred-num-3d{{if and $a3 (eq . $a3)}} pred-hit-chip{{end}}">{{.}}</span>
       {{end}}
     </div>
     {{if .HasResult}}
     <div class="pred-result-row">
       <span class="pred-result-label">Keluar:</span>
-      {{$a4 := .Actual4D}}
-      {{range .Top4D}}
-      {{if eq . $a4}}<span class="pred-hit">✅ {{.}}</span>{{end}}
-      {{end}}
-      {{$hit4d := false}}{{range .Top4D}}{{if eq . $a4}}{{$hit4d = true}}{{end}}{{end}}
-      {{if not $hit4d}}<span class="pred-miss">❌ {{$a4}}</span>{{end}}
+      {{$hit3d := false}}{{range .FilteredTop3D}}{{if eq . $a3}}{{$hit3d = true}}{{end}}{{end}}
+      {{if $hit3d}}<span class="pred-hit">✅ {{$a3}}</span>{{else}}<span class="pred-miss">❌ {{$a3}}</span>{{end}}
     </div>
     {{end}}
+  </div>
+  {{end}}
+
+  {{/* ── Tombol Copy Format Pasang ── */}}
+  {{if and .FilteredTop4D .FilteredTop3D}}
+  <div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
+    <button class="btn-copy-pasang" onclick="copyPasang(this)"
+      style="flex:1;background:#1a2e1a;border:1px solid #276749;color:#68d391;border-radius:6px;padding:.4rem .6rem;font-size:.72rem;cursor:pointer;min-width:0">
+      📋 Copy 3D+4D
+    </button>
+    <button class="btn-copy-2d" onclick="copy2D(this)"
+      style="flex:1;background:#0d1f35;border:1px solid #2a5298;color:#90e0ff;border-radius:6px;padding:.4rem .6rem;font-size:.72rem;cursor:pointer;min-width:0">
+      📋 Copy 2D
+    </button>
   </div>
   {{end}}
 
