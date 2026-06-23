@@ -192,6 +192,8 @@ type PageData struct {
         CompStats         []CompStatRow
         LearnedWeights    LearnedWeights
         BacktestRows      []BacktestRow
+        RetroRows         []BacktestRow
+        RetroWR           WinRate
         SesiPreds         []SesiPred
         PredDate          string
         EkorStats         *EkorStatsData
@@ -1265,8 +1267,14 @@ func calcEkorTransitionBoost(entries []rawEntry, targetSesi int) map[string]floa
 }
 
 func analyzeD2Enhanced(targetSesi int) []D2Stat {
-        now := nowWIB()
-        allEntries := getAllResults()
+        return analyzeD2EnhancedEx(targetSesi, getAllResults(), nowWIB())
+}
+
+// analyzeD2EnhancedEx memungkinkan backtest retroaktif: inputEntries hanya berisi
+// data sebelum tanggal yang ditest, refTime dipakai sebagai "sekarang" untuk decay.
+func analyzeD2EnhancedEx(targetSesi int, inputEntries []rawEntry, refTime time.Time) []D2Stat {
+        now := refTime
+        allEntries := inputEntries
         if len(allEntries) == 0 {
                 return nil
         }
@@ -2550,8 +2558,96 @@ func containsStr(slice []string, s string) bool {
 }
 
 func backtestHandler(w http.ResponseWriter, r *http.Request) {
-        // Pre-compute prediksi per sesi (2D top, 3D top-10, 4D top-10)
         allEntries := getAllResults()
+
+        // ── Retroactive Walk-Forward Backtest ──────────────────────────────────────
+        // Untuk setiap (tanggal, sesi) yang ada di DB, jalankan prediksi hanya
+        // menggunakan data SEBELUM tanggal tersebut (no look-ahead bias).
+        // Butuh minimal 14 hari prior data agar prediksi bermakna.
+        type dateKey struct{ tanggal string; sesi int }
+        type resultVal struct{ nomor string }
+        resultMap := map[dateKey]resultVal{}
+        dateSet := map[string]bool{}
+        for _, e := range allEntries {
+                resultMap[dateKey{e.tanggal, e.sesi}] = resultVal{e.nomor}
+                dateSet[e.tanggal] = true
+        }
+        // Kumpulkan semua tanggal unik terurut
+        var dates []string
+        for d := range dateSet {
+                dates = append(dates, d)
+        }
+        sort.Strings(dates)
+
+        var retroList []BacktestRow
+        retroTotal, retroHits := 0, 0
+
+        for idx, testDate := range dates {
+                if idx < 14 { // butuh minimal 14 hari prior data
+                        continue
+                }
+                testTime, err := time.Parse("2006-01-02", testDate)
+                if err != nil {
+                        continue
+                }
+                // Data sebelum testDate (strictly)
+                var priorEntries []rawEntry
+                for _, e := range allEntries {
+                        if e.tanggal < testDate {
+                                priorEntries = append(priorEntries, e)
+                        }
+                }
+                if len(priorEntries) < 30 {
+                        continue
+                }
+
+                for sesi := 1; sesi <= 6; sesi++ {
+                        res, ok := resultMap[dateKey{testDate, sesi}]
+                        if !ok || len(res.nomor) < 4 {
+                                continue
+                        }
+                        // Jalankan prediksi dengan data sebelum testDate
+                        st := analyzeD2EnhancedEx(sesi, priorEntries, testTime)
+                        if len(st) == 0 {
+                                continue
+                        }
+                        bbfsDigits := buildBBFSFromStats(st)
+                        if len(bbfsDigits) < 5 {
+                                continue
+                        }
+                        actualD2 := res.nomor[2:4]
+                        hit := isHit(bbfsDigits, actualD2)
+                        retroTotal++
+                        if hit {
+                                retroHits++
+                        }
+                        pct := 0
+                        if retroTotal > 0 {
+                                pct = retroHits * 100 / retroTotal
+                        }
+                        retroList = append(retroList, BacktestRow{
+                                Tanggal:  testDate,
+                                Sesi:     sesi,
+                                BBFS:     bbfsDigits,
+                                ActualD2: actualD2,
+                                Actual4D: res.nomor,
+                                IsHit:    hit,
+                                RunTotal: retroTotal,
+                                RunHits:  retroHits,
+                                RunPct:   pct,
+                        })
+                }
+        }
+        // Balik: terbaru di atas
+        for i, j := 0, len(retroList)-1; i < j; i, j = i+1, j-1 {
+                retroList[i], retroList[j] = retroList[j], retroList[i]
+        }
+        retroWR := WinRate{Total: retroTotal, Hits: retroHits, Miss: retroTotal - retroHits}
+        if retroTotal > 0 {
+                retroWR.Pct = retroHits * 100 / retroTotal
+        }
+
+        // ── Backtest Lama: dari bbfs_preds yang tersimpan ─────────────────────────
         topD2BySesi := map[int]string{}
         top3DBySesi := map[int][]string{}
         top4DBySesi := map[int][]string{}
@@ -2564,7 +2660,6 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
                 top3DBySesi[s] = filter3DByCoverage(buildTop3D(st, allEntries, s), top4DBySesi[s])
         }
 
-        // Ambil semua prediksi AI-LOKAL yang sudah ada result-nya, join langsung
         rows, err := db.Query(`
                 SELECT bp.tanggal, bp.sesi, bp.digits, r.nomor
                 FROM bbfs_preds bp
@@ -2583,7 +2678,6 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
                 var tanggal, digits, nomor string
                 var sesi int
                 rows.Scan(&tanggal, &sesi, &digits, &nomor)
-
                 if len(nomor) < 4 || len(digits) < 5 {
                         continue
                 }
@@ -2593,33 +2687,16 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
                 hit := isHit(digits, actualD2)
                 hit3D := containsStr(top3DBySesi[sesi], actual3D)
                 hit4D := containsStr(top4DBySesi[sesi], actual4D)
-
                 total++
-                if hit {
-                        hits++
-                }
-                if hit3D {
-                        hits3D++
-                }
-                if hit4D {
-                        hits4D++
-                }
+                if hit { hits++ }
+                if hit3D { hits3D++ }
+                if hit4D { hits4D++ }
                 row := BacktestRow{
-                        Tanggal:   tanggal,
-                        Sesi:      sesi,
-                        BBFS:      digits,
-                        TopD2:     topD2BySesi[sesi],
-                        IsHit:     hit,
-                        IsHit3D:   hit3D,
-                        IsHit4D:   hit4D,
-                        ActualD2:  actualD2,
-                        Actual3D:  actual3D,
-                        Actual4D:  actual4D,
-                        RunTotal:  total,
-                        RunHits:   hits,
-                        RunPct:    hits * 100 / total,
-                        RunHits3D: hits3D,
-                        RunHits4D: hits4D,
+                        Tanggal: tanggal, Sesi: sesi, BBFS: digits,
+                        TopD2: topD2BySesi[sesi], IsHit: hit, IsHit3D: hit3D, IsHit4D: hit4D,
+                        ActualD2: actualD2, Actual3D: actual3D, Actual4D: actual4D,
+                        RunTotal: total, RunHits: hits, RunPct: hits * 100 / total,
+                        RunHits3D: hits3D, RunHits4D: hits4D,
                 }
                 if total > 0 {
                         row.RunPct3D = hits3D * 100 / total
@@ -2627,25 +2704,22 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
                 }
                 list = append(list, row)
         }
-
-        // Balik urutan: terbaru di atas
         for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
                 list[i], list[j] = list[j], list[i]
         }
-
         wr := WinRate{Total: total, Hits: hits, Miss: total - hits}
-        if total > 0 {
-                wr.Pct = hits * 100 / total
-        }
+        if total > 0 { wr.Pct = hits * 100 / total }
         wr3D := WinRate{Total: total, Hits: hits3D, Miss: total - hits3D}
-        if total > 0 {
-                wr3D.Pct = hits3D * 100 / total
-        }
+        if total > 0 { wr3D.Pct = hits3D * 100 / total }
         wr4D := WinRate{Total: total, Hits: hits4D, Miss: total - hits4D}
-        if total > 0 {
-                wr4D.Pct = hits4D * 100 / total
-        }
-        render(w, "backtest", PageData{WR: wr, WR3D: wr3D, WR4D: wr4D, BacktestRows: list})
+        if total > 0 { wr4D.Pct = hits4D * 100 / total }
+
+        render(w, "backtest", PageData{
+                WR: wr, WR3D: wr3D, WR4D: wr4D,
+                BacktestRows: list,
+                RetroRows:    retroList,
+                RetroWR:      retroWR,
+        })
 }
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {

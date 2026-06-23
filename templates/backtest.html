@@ -54,7 +54,62 @@
 .bt-note { font-size:.65rem; color:#4a5568; }
 </style>
 
-{{/* ── Tabel Riwayat ── */}}
+{{/* ── Retroactive Walk-Forward Backtest ── */}}
+<div class="card" style="margin-bottom:.75rem">
+  <div class="card-title" style="margin-bottom:.6rem">🔬 Retroactive Backtest (Walk-Forward · Tanpa Look-Ahead)</div>
+  <p style="font-size:.72rem;color:#637087;margin-bottom:.75rem">
+    Simulasi prediksi di setiap hari menggunakan <strong>hanya data sebelumnya</strong> — persis seperti kondisi nyata.
+    Ini adalah ukuran akurasi yang sesungguhnya.
+  </p>
+  {{if .RetroRows}}
+  <div style="display:flex;align-items:center;gap:1rem;margin-bottom:.75rem;flex-wrap:wrap">
+    <div style="font-size:2rem;font-weight:800;{{if ge .RetroWR.Pct 30}}color:#68d391{{else if ge .RetroWR.Pct 20}}color:#f6ad55{{else}}color:#fc8181{{end}}">
+      {{.RetroWR.Pct}}%
+    </div>
+    <div style="font-size:.78rem;color:#a0aec0">
+      ✅ {{.RetroWR.Hits}} HIT &nbsp;·&nbsp; ❌ {{.RetroWR.Miss}} MISS &nbsp;·&nbsp; {{.RetroWR.Total}} sesi diuji<br>
+      <span style="color:#4a5568;font-size:.68rem">Baseline acak BBFS 6-digit = 30% | Di atas 30% = prediksi lebih baik dari random</span>
+    </div>
+  </div>
+  <div class="table-scroll">
+  <table style="width:100%;border-collapse:collapse;font-size:.76rem">
+    <thead>
+      <tr style="color:#637087;border-bottom:1px solid #1e2d3d">
+        <th style="text-align:left;padding:.3rem .4rem">Tanggal</th>
+        <th style="text-align:center;padding:.3rem .4rem">Sesi</th>
+        <th style="text-align:left;padding:.3rem .4rem">BBFS Prediksi</th>
+        <th style="text-align:center;padding:.3rem .4rem">Aktual</th>
+        <th style="text-align:center;padding:.3rem .4rem">2D</th>
+        <th style="text-align:right;padding:.3rem .4rem">Running WR</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .RetroRows}}
+    <tr style="border-bottom:1px solid #0d1520{{if .IsHit}};background:#0d1f0d{{end}}">
+      <td style="padding:.3rem .4rem;color:#a0aec0">{{.Tanggal | formatDate}}</td>
+      <td style="text-align:center;padding:.3rem .4rem;color:#637087">S{{.Sesi}}</td>
+      <td style="padding:.3rem .4rem;font-family:monospace;letter-spacing:.12em;color:#90e0ff">{{.BBFS}}</td>
+      <td style="text-align:center;padding:.3rem .4rem;font-family:monospace;font-weight:700;color:#e2e8f0">{{.Actual4D}}</td>
+      <td style="text-align:center;padding:.3rem .4rem">
+        {{if .IsHit}}<span style="color:#68d391;font-weight:700">✅ {{.ActualD2}}</span>
+        {{else}}<span style="color:#637087">❌ {{.ActualD2}}</span>{{end}}
+      </td>
+      <td style="text-align:right;padding:.3rem .4rem;font-size:.7rem;color:{{if ge .RunPct 30}}#68d391{{else if ge .RunPct 20}}#f6ad55{{else}}#fc8181{{end}}">
+        {{.RunHits}}/{{.RunTotal}} ({{.RunPct}}%)
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <div style="text-align:center;padding:1.5rem;color:#4a5568;font-size:.85rem">
+    Belum cukup data historis. Butuh minimal 14 hari data untuk retroactive backtest.
+  </div>
+  {{end}}
+</div>
+
+{{/* ── Tabel Riwayat Prediksi Tersimpan ── */}}
 {{if .BacktestRows}}
 <div class="card">
   <div class="card-title" style="margin-bottom:.75rem">📋 Riwayat Prediksi (Terbaru di Atas)</div>
