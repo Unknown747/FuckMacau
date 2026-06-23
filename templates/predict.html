@@ -22,7 +22,11 @@
 {{/* ── Grid 6 Sesi ── */}}
 <div class="sesi6-grid">
 {{range .SesiPreds}}
-<div class="sesi6-card {{if .IsNext}}sesi6-next{{else if .HasResult}}sesi6-done{{end}}">
+<div class="sesi6-card {{if .IsNext}}sesi6-next{{else if .HasResult}}sesi6-done{{end}}"
+  data-sesi="{{.Sesi}}"
+  data-has-bbfs="{{if .BBFS}}1{{else}}0{{end}}"
+  data-count3d="{{len .Top3D}}"
+  data-count4d="{{len .Top4D}}">
 
   {{/* Data teks untuk clipboard sesi ini (hidden) */}}
   <textarea class="sesi-copy-text" readonly style="position:absolute;left:-9999px;opacity:0" aria-hidden="true">{{$.PredDate | formatDate}} Sesi {{.Sesi}}{{if .HasResult}} (Keluar: {{.Actual4D}}){{end}}
@@ -68,7 +72,7 @@ BBFS : {{range .BBFSList}}{{.}} {{end}}
     {{/* Tombol lihat kombinasi */}}
     {{if .BBFS}}
     <button class="sesi6-toggle" onclick="toggleKombo(this)">
-      Lihat 30 Kombinasi ▾
+      Lihat 42 Kombinasi ▾
     </button>
     <div class="sesi6-kombo" style="display:none">
       {{$digits := .BBFSList}}
@@ -127,6 +131,58 @@ BBFS : {{range .BBFSList}}{{.}} {{end}}
 {{end}}
 </div>
 
+{{/* ── Kalkulator Modal BBFS ── */}}
+{{if .SesiPreds}}
+<div class="card" id="kalkulator-bbfs" style="margin-top:.65rem">
+  <div class="card-title" style="margin-bottom:.75rem">🧮 Kalkulator Modal BBFS</div>
+
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.85rem;align-items:flex-end">
+    <div>
+      <div style="font-size:.68rem;color:#637087;margin-bottom:.25rem">Bet per 2D (BBFS)</div>
+      <input id="bet2d" type="number" value="200" min="100" step="100"
+        style="width:90px;background:#0d1220;border:1px solid #2a3d52;color:#e2e8f0;border-radius:6px;padding:.35rem .5rem;font-size:.85rem"
+        oninput="hitungModal()">
+    </div>
+    <div>
+      <div style="font-size:.68rem;color:#637087;margin-bottom:.25rem">Bet per 3D</div>
+      <input id="bet3d" type="number" value="500" min="100" step="100"
+        style="width:90px;background:#0d1220;border:1px solid #2a3d52;color:#e2e8f0;border-radius:6px;padding:.35rem .5rem;font-size:.85rem"
+        oninput="hitungModal()">
+    </div>
+    <div>
+      <div style="font-size:.68rem;color:#637087;margin-bottom:.25rem">Bet per 4D</div>
+      <input id="bet4d" type="number" value="200" min="100" step="100"
+        style="width:90px;background:#0d1220;border:1px solid #2a3d52;color:#e2e8f0;border-radius:6px;padding:.35rem .5rem;font-size:.85rem"
+        oninput="hitungModal()">
+    </div>
+    <div style="font-size:.65rem;color:#4a5568;line-height:1.5;padding-bottom:.1rem">
+      Bayaran: 2D ×70 &nbsp;|&nbsp; 3D ×400 &nbsp;|&nbsp; 4D ×3000
+    </div>
+  </div>
+
+  <div class="table-scroll">
+  <table id="tbl-kalkulator" style="width:100%;border-collapse:collapse;font-size:.78rem">
+    <thead>
+      <tr style="color:#637087;border-bottom:1px solid #1e2d3d;font-size:.7rem">
+        <th style="text-align:left;padding:.3rem .4rem">Sesi</th>
+        <th style="text-align:right;padding:.3rem .4rem">Modal 2D<br><span style="font-weight:400;color:#4a5568">(42 pasang)</span></th>
+        <th style="text-align:right;padding:.3rem .4rem">Modal 3D<br><span class="th-sub3d" style="font-weight:400;color:#4a5568"></span></th>
+        <th style="text-align:right;padding:.3rem .4rem">Modal 4D<br><span class="th-sub4d" style="font-weight:400;color:#4a5568"></span></th>
+        <th style="text-align:right;padding:.3rem .4rem;color:#a0aec0">Total Modal</th>
+        <th style="text-align:right;padding:.3rem .4rem;color:#68d391">Menang 2D</th>
+        <th style="text-align:right;padding:.3rem .4rem;color:#68d391">Menang 3D</th>
+        <th style="text-align:right;padding:.3rem .4rem;color:#b794f4">Menang 4D</th>
+      </tr>
+    </thead>
+    <tbody id="tbody-kalkulator"></tbody>
+    <tfoot id="tfoot-kalkulator"></tfoot>
+  </table>
+  </div>
+
+  <div id="ringkasan-modal" style="margin-top:.75rem;display:flex;gap:.75rem;flex-wrap:wrap"></div>
+</div>
+{{end}}
+
 {{else}}
 <div class="card" style="text-align:center;padding:2.5rem 1rem">
   <div style="font-size:2.5rem;margin-bottom:.75rem">⏳</div>
@@ -153,9 +209,117 @@ function toggleKombo(btn) {
     btn.textContent = 'Tutup ▴';
   } else {
     box.style.display = 'none';
-    btn.textContent = 'Lihat 30 Kombinasi ▾';
+    btn.textContent = 'Lihat 42 Kombinasi ▾';
   }
 }
+
+function rp(n) {
+  return 'Rp' + n.toLocaleString('id-ID');
+}
+
+function hitungModal() {
+  var bet2d = parseInt(document.getElementById('bet2d').value) || 200;
+  var bet3d = parseInt(document.getElementById('bet3d').value) || 500;
+  var bet4d = parseInt(document.getElementById('bet4d').value) || 200;
+
+  var PAIRS_BBFS = 42;
+  var PAY_2D = 70;
+  var PAY_3D = 400;
+  var PAY_4D = 3000;
+
+  var cards = document.querySelectorAll('.sesi6-card[data-sesi]');
+  var tbody = document.getElementById('tbody-kalkulator');
+  var tfoot = document.getElementById('tfoot-kalkulator');
+  if (!tbody) return;
+
+  var grandModal = 0, grandModal2d = 0, grandModal3d = 0, grandModal4d = 0;
+
+  var rows = '';
+  cards.forEach(function(card) {
+    var sesi    = card.getAttribute('data-sesi');
+    var hasBBFS = card.getAttribute('data-has-bbfs') === '1';
+    var n3d     = parseInt(card.getAttribute('data-count3d')) || 0;
+    var n4d     = parseInt(card.getAttribute('data-count4d')) || 0;
+
+    var modal2d = hasBBFS ? PAIRS_BBFS * bet2d : 0;
+    var modal3d = n3d * bet3d;
+    var modal4d = n4d * bet4d;
+    var total   = modal2d + modal3d + modal4d;
+
+    var win2d  = hasBBFS ? bet2d * PAY_2D : 0;
+    var win3d  = n3d > 0 ? bet3d * PAY_3D : 0;
+    var win4d  = n4d > 0 ? bet4d * PAY_4D : 0;
+
+    var net2d  = win2d  - total;
+    var net3d  = win3d  - total;
+    var net4d  = win4d  - total;
+
+    grandModal   += total;
+    grandModal2d += modal2d;
+    grandModal3d += modal3d;
+    grandModal4d += modal4d;
+
+    function netSpan(net) {
+      var c = net >= 0 ? '#68d391' : '#fc8181';
+      var s = net >= 0 ? '+' : '';
+      return '<span style="font-size:.68rem;color:' + c + '">(' + s + rp(net) + ')</span>';
+    }
+
+    rows += '<tr style="border-bottom:1px solid #0d1520">' +
+      '<td style="padding:.3rem .4rem;color:#a0aec0;font-weight:600">S' + sesi + '</td>' +
+      '<td style="text-align:right;padding:.3rem .4rem;color:#90e0ff">' + (hasBBFS ? rp(modal2d) : '—') + '</td>' +
+      '<td style="text-align:right;padding:.3rem .4rem;color:#68d391">' + (n3d > 0 ? rp(modal3d) : '—') + '</td>' +
+      '<td style="text-align:right;padding:.3rem .4rem;color:#b794f4">' + (n4d > 0 ? rp(modal4d) : '—') + '</td>' +
+      '<td style="text-align:right;padding:.3rem .4rem;font-weight:700;color:#e2e8f0">' + rp(total) + '</td>' +
+      '<td style="text-align:right;padding:.3rem .4rem">' + (hasBBFS ? rp(win2d) + '<br>' + netSpan(net2d) : '—') + '</td>' +
+      '<td style="text-align:right;padding:.3rem .4rem">' + (n3d > 0 ? rp(win3d) + '<br>' + netSpan(net3d) : '—') + '</td>' +
+      '<td style="text-align:right;padding:.3rem .4rem">' + (n4d > 0 ? rp(win4d) + '<br>' + netSpan(net4d) : '—') + '</td>' +
+      '</tr>';
+  });
+  tbody.innerHTML = rows;
+
+  var win2dAll = bet2d * PAY_2D;
+  var win3dAll = bet3d * PAY_3D;
+  var win4dAll = bet4d * PAY_4D;
+
+  tfoot.innerHTML = '<tr style="border-top:2px solid #2a3d52;background:#080f1a;font-weight:700">' +
+    '<td style="padding:.4rem .4rem;color:#718096;font-size:.72rem">TOTAL 6 SESI</td>' +
+    '<td style="text-align:right;padding:.4rem .4rem;color:#90e0ff">' + rp(grandModal2d) + '</td>' +
+    '<td style="text-align:right;padding:.4rem .4rem;color:#68d391">' + rp(grandModal3d) + '</td>' +
+    '<td style="text-align:right;padding:.4rem .4rem;color:#b794f4">' + rp(grandModal4d) + '</td>' +
+    '<td style="text-align:right;padding:.4rem .4rem;color:#fff;font-size:.9rem">' + rp(grandModal) + '</td>' +
+    '<td colspan="3" style="text-align:right;padding:.4rem .4rem;font-size:.7rem;color:#637087">Bayar/Sesi jika 2D hit: <span style="color:#68d391">' + rp(win2dAll) + '</span><br>Bayar/Sesi jika 3D hit: <span style="color:#68d391">' + rp(win3dAll) + '</span><br>Bayar/Sesi jika 4D hit: <span style="color:#b794f4">' + rp(win4dAll) + '</span></td>' +
+    '</tr>';
+
+  // Ringkasan
+  var ring = document.getElementById('ringkasan-modal');
+  if (ring) {
+    var perSesi2d = PAIRS_BBFS * bet2d;
+    ring.innerHTML =
+      '<div style="background:#080f1a;border:1px solid #2a3d52;border-radius:8px;padding:.6rem .8rem;flex:1;min-width:160px">' +
+        '<div style="font-size:.65rem;color:#637087;margin-bottom:.2rem">Modal per sesi (2D BBFS)</div>' +
+        '<div style="font-size:1.1rem;font-weight:700;color:#90e0ff">' + rp(perSesi2d) + '</div>' +
+        '<div style="font-size:.68rem;color:#4a5568">42 pasang × ' + rp(bet2d) + '</div>' +
+      '</div>' +
+      '<div style="background:#080f1a;border:1px solid #2a3d52;border-radius:8px;padding:.6rem .8rem;flex:1;min-width:160px">' +
+        '<div style="font-size:.65rem;color:#637087;margin-bottom:.2rem">Total modal 6 sesi</div>' +
+        '<div style="font-size:1.1rem;font-weight:700;color:#e2e8f0">' + rp(grandModal) + '</div>' +
+        '<div style="font-size:.68rem;color:#4a5568">2D + 3D + 4D semua sesi</div>' +
+      '</div>' +
+      '<div style="background:#0a1a0f;border:1px solid #276749;border-radius:8px;padding:.6rem .8rem;flex:1;min-width:160px">' +
+        '<div style="font-size:.65rem;color:#637087;margin-bottom:.2rem">Untung bersih jika 2D hit</div>' +
+        '<div style="font-size:1.1rem;font-weight:700;color:#68d391">+' + rp(win2dAll - perSesi2d) + '</div>' +
+        '<div style="font-size:.68rem;color:#4a5568">' + rp(win2dAll) + ' − modal ' + rp(perSesi2d) + '</div>' +
+      '</div>' +
+      '<div style="background:#0a0810;border:1px solid #553c9a;border-radius:8px;padding:.6rem .8rem;flex:1;min-width:160px">' +
+        '<div style="font-size:.65rem;color:#637087;margin-bottom:.2rem">Untung bersih jika 4D hit</div>' +
+        '<div style="font-size:1.1rem;font-weight:700;color:#b794f4">+' + rp(win4dAll - grandModal) + '</div>' +
+        '<div style="font-size:.68rem;color:#4a5568">' + rp(win4dAll) + ' − total ' + rp(grandModal) + '</div>' +
+      '</div>';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', hitungModal);
 
 function copySesi(btn) {
   var card = btn.closest('.sesi6-card');
