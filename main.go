@@ -528,7 +528,7 @@ func generateBBFS(input string) *BBFSResult {
                         seen[s] = true
                         digits = append(digits, s)
                 }
-                if len(digits) == 6 {
+                if len(digits) == 7 {
                         break
                 }
         }
@@ -1855,24 +1855,20 @@ func calcDigitHitRate() map[string]float64 {
         return mult
 }
 
-// buildBBFSFromStats mencari 6 digit terbaik dari C(10,6)=210 kombinasi.
-// Pilih kombinasi yang memaksimalkan total skor D2 pair yang terbentuk
+// buildBBFSFromStats mencari 7 digit terbaik dari C(10,7)=120 kombinasi.
+// Coverage 42 pasangan per set (naik dari 30), baseline acak = 42%.
 func buildBBFSFromStats(stats []D2Stat) string {
         if len(stats) == 0 {
                 return ""
         }
 
         // Buat map skor per D2 pair dengan rank-multiplier.
-        // Masalah lama: exhaustive search memilih digit yang muncul di BANYAK pair
-        // medioker, bukan digit dari pair TERATAS — akibatnya digit top-pair terlempar.
-        // Fix: pair ranking #1 dapat 10×, #5 → ~8×, #10 → ~5.5×, rank 23+ → 1× (baseline).
         pairScore := map[string]float64{}
         for i, s := range stats {
                 rankMult := math.Max(1.0, 10.0-float64(i)*0.40)
                 pairScore[s.D2] = s.Score * rankMult
         }
-        // Simetrisasi: pastikan "91" dapat minimal 60% skor "19" agar exhaustive
-        // search tidak asimetris (hanya "19" tinggi tapi "91" rendah).
+        // Simetrisasi
         for pair, score := range pairScore {
                 if len(pair) != 2 {
                         continue
@@ -1883,8 +1879,7 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 }
         }
 
-        // ── (4) Identifikasi 2D lemah dan digit yang berasal dari mereka ──────────
-        // "Lemah" = SesiFreq==0 dan skor di bawah 40% rata-rata skor seluruh D2
+        // Identifikasi pair lemah
         totalScore := 0.0
         for _, s := range stats {
                 totalScore += s.Score
@@ -1893,7 +1888,6 @@ func buildBBFSFromStats(stats []D2Stat) string {
         if len(stats) > 0 {
                 weakThreshold = (totalScore / float64(len(stats))) * 0.4
         }
-        // Untuk setiap digit, hitung berapa banyak pair lemah vs kuat yang melibatkannya
         digitWeakCount := map[string]int{}
         digitStrongCount := map[string]int{}
         for _, s := range stats {
@@ -1910,7 +1904,6 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 }
         }
 
-        // Hitung skor kontribusi per digit (sum dari semua pair yang melibatkan digit ini)
         digitContrib := map[string]float64{}
         for pair, score := range pairScore {
                 if len(pair) == 2 {
@@ -1919,21 +1912,15 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 }
         }
 
-        // Terapkan penalti 0.6x pada digit yang mayoritas pair-nya lemah
         for d := range digitContrib {
-                weak := digitWeakCount[d]
-                strong := digitStrongCount[d]
-                if weak > strong {
+                if digitWeakCount[d] > digitStrongCount[d] {
                         digitContrib[d] *= 0.6
                 }
         }
 
-        // Digit hit-rate penalty dinonaktifkan — butuh 80+ data historis dulu
-        // hitMult := calcDigitHitRate() — aktifkan setelah data cukup
-
         allDigits := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 
-        // Exhaustive search C(10,6) = 210 kombinasi — coverage 30 pasangan per set
+        // Exhaustive search C(10,7) = 120 kombinasi — coverage 42 pasangan per set
         bestScore := -1.0
         bestCombo := []string{}
 
@@ -1943,22 +1930,23 @@ func buildBBFSFromStats(stats []D2Stat) string {
                                 for l := k + 1; l < 10; l++ {
                                         for m := l + 1; m < 10; m++ {
                                                 for n := m + 1; n < 10; n++ {
-                                                        combo := []string{
-                                                                allDigits[i], allDigits[j], allDigits[k],
-                                                                allDigits[l], allDigits[m], allDigits[n],
-                                                        }
-                                                        // Hitung total skor semua 30 pasangan D2 dari 6 digit ini
-                                                        score := 0.0
-                                                        for _, d1 := range combo {
-                                                                for _, d2 := range combo {
-                                                                        if d1 != d2 {
-                                                                                score += pairScore[d1+d2]
+                                                        for o := n + 1; o < 10; o++ {
+                                                                combo := []string{
+                                                                        allDigits[i], allDigits[j], allDigits[k],
+                                                                        allDigits[l], allDigits[m], allDigits[n], allDigits[o],
+                                                                }
+                                                                score := 0.0
+                                                                for _, d1 := range combo {
+                                                                        for _, d2 := range combo {
+                                                                                if d1 != d2 {
+                                                                                        score += pairScore[d1+d2]
+                                                                                }
                                                                         }
                                                                 }
-                                                        }
-                                                        if score > bestScore {
-                                                                bestScore = score
-                                                                bestCombo = combo
+                                                                if score > bestScore {
+                                                                        bestScore = score
+                                                                        bestCombo = combo
+                                                                }
                                                         }
                                                 }
                                         }
@@ -1968,7 +1956,6 @@ func buildBBFSFromStats(stats []D2Stat) string {
         }
 
         if len(bestCombo) == 0 {
-                // Fallback: ambil 6 digit dengan kontribusi tertinggi
                 type kv struct {
                         d string
                         v float64
@@ -1980,13 +1967,12 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 sort.Slice(sorted, func(i, j int) bool { return sorted[i].v > sorted[j].v })
                 for _, kv := range sorted {
                         bestCombo = append(bestCombo, kv.d)
-                        if len(bestCombo) == 6 {
+                        if len(bestCombo) == 7 {
                                 break
                         }
                 }
         }
 
-        // Urutkan digit dalam BBFS berdasarkan kontribusi skor (digit terkuat duluan)
         sort.Slice(bestCombo, func(i, j int) bool {
                 return digitContrib[bestCombo[i]] > digitContrib[bestCombo[j]]
         })
@@ -1994,22 +1980,20 @@ func buildBBFSFromStats(stats []D2Stat) string {
         return strings.Join(bestCombo, "")
 }
 
-// buildBBFS2FromStats: BBFS kedua dengan penalti pair yang sudah tercakup BBFS-A
-// Memastikan BBFS-B punya digit berbeda untuk coverage lebih luas
+// buildBBFS2FromStats: BBFS kedua 7 digit dengan penalti pair yang sudah tercakup BBFS-A
 func buildBBFS2FromStats(stats []D2Stat, firstDigits string) string {
         if len(stats) == 0 {
                 return ""
         }
-        // Buat pairScore dengan penalti pair yang kedua digitnya sudah ada di BBFS-A
         pairScore := map[string]float64{}
         for _, s := range stats {
                 score := s.Score
                 inFirst0 := strings.ContainsRune(firstDigits, rune(s.D2[0]))
                 inFirst1 := strings.ContainsRune(firstDigits, rune(s.D2[1]))
                 if inFirst0 && inFirst1 {
-                        score *= 0.1 // sangat kecilkan — sudah tercakup BBFS-A
+                        score *= 0.1
                 } else if inFirst0 || inFirst1 {
-                        score *= 0.6 // sedikit penalti — setengah sudah tercakup
+                        score *= 0.6
                 }
                 pairScore[s.D2] = score
         }
@@ -2026,27 +2010,30 @@ func buildBBFS2FromStats(stats []D2Stat, firstDigits string) string {
         bestScore := -1.0
         bestCombo := []string{}
 
+        // C(10,7) = 120 kombinasi
         for i := 0; i < 10; i++ {
                 for j := i + 1; j < 10; j++ {
                         for k := j + 1; k < 10; k++ {
                                 for l := k + 1; l < 10; l++ {
                                         for m := l + 1; m < 10; m++ {
                                                 for n := m + 1; n < 10; n++ {
-                                                        combo := []string{
-                                                                allDigits[i], allDigits[j], allDigits[k],
-                                                                allDigits[l], allDigits[m], allDigits[n],
-                                                        }
-                                                        score := 0.0
-                                                        for _, d1 := range combo {
-                                                                for _, d2 := range combo {
-                                                                        if d1 != d2 {
-                                                                                score += pairScore[d1+d2]
+                                                        for o := n + 1; o < 10; o++ {
+                                                                combo := []string{
+                                                                        allDigits[i], allDigits[j], allDigits[k],
+                                                                        allDigits[l], allDigits[m], allDigits[n], allDigits[o],
+                                                                }
+                                                                score := 0.0
+                                                                for _, d1 := range combo {
+                                                                        for _, d2 := range combo {
+                                                                                if d1 != d2 {
+                                                                                        score += pairScore[d1+d2]
+                                                                                }
                                                                         }
                                                                 }
-                                                        }
-                                                        if score > bestScore {
-                                                                bestScore = score
-                                                                bestCombo = combo
+                                                                if score > bestScore {
+                                                                        bestScore = score
+                                                                        bestCombo = combo
+                                                                }
                                                         }
                                                 }
                                         }
@@ -2067,7 +2054,7 @@ func buildBBFS2FromStats(stats []D2Stat, firstDigits string) string {
                 sort.Slice(sorted, func(i, j int) bool { return sorted[i].v > sorted[j].v })
                 for _, kv := range sorted {
                         bestCombo = append(bestCombo, kv.d)
-                        if len(bestCombo) == 6 {
+                        if len(bestCombo) == 7 {
                                 break
                         }
                 }
@@ -2924,9 +2911,9 @@ func cleanupBBFS2() {
         }
 }
 
-// migrateBBFS5to6 upgrade semua entry bbfs_preds 5-digit → 6-digit menggunakan algoritma baru
+// migrateBBFS5to6 upgrade semua entry bbfs_preds < 7 digit → 7-digit menggunakan algoritma baru
 func migrateBBFS5to6() {
-        rows, err := db.Query(`SELECT id, sesi FROM bbfs_preds WHERE source='AI-LOKAL' AND LENGTH(digits)=5`)
+        rows, err := db.Query(`SELECT id, sesi FROM bbfs_preds WHERE source='AI-LOKAL' AND LENGTH(digits)<7`)
         if err != nil {
                 return
         }
@@ -2941,11 +2928,11 @@ func migrateBBFS5to6() {
         if len(entries) == 0 {
                 return
         }
-        log.Printf("Migrasi %d entri BBFS 5-digit → 6-digit...", len(entries))
+        log.Printf("Migrasi %d entri BBFS → 7-digit...", len(entries))
         for _, e := range entries {
                 stats := analyzeD2Enhanced(e.sesi)
                 newDigits := buildBBFSFromStats(stats)
-                if len(newDigits) >= 6 {
+                if len(newDigits) >= 7 {
                         db.Exec(`UPDATE bbfs_preds SET digits=? WHERE id=?`, newDigits, e.id)
                 }
         }

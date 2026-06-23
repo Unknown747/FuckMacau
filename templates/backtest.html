@@ -10,11 +10,11 @@
 
   {{/* 2D/BBFS */}}
   <div class="bt-summary-card">
-    <div class="bt-summary-title">🎯 BBFS 6-Digit (2D)</div>
-    <div class="bt-summary-pct {{if ge .WR.Pct 50}}bt-good{{else if ge .WR.Pct 30}}bt-med{{else}}bt-bad{{end}}">{{.WR.Pct}}%</div>
+    <div class="bt-summary-title">🎯 BBFS 7-Digit (2D)</div>
+    <div class="bt-summary-pct {{if ge .WR.Pct 55}}bt-good{{else if ge .WR.Pct 42}}bt-med{{else}}bt-bad{{end}}">{{.WR.Pct}}%</div>
     <div class="bt-summary-sub">✅ {{.WR.Hits}} HIT · ❌ {{.WR.Miss}} MISS · {{.WR.Total}} eval</div>
-    <div class="bt-bar"><div class="bt-bar-fill {{if ge .WR.Pct 30}}bt-fill-ok{{else}}bt-fill-bad{{end}}" style="width:{{.WR.Pct}}%"></div></div>
-    <div class="bt-note">Coverage 30% (30 dari 100 kombinasi). Acak = 30%.</div>
+    <div class="bt-bar"><div class="bt-bar-fill {{if ge .WR.Pct 42}}bt-fill-ok{{else}}bt-fill-bad{{end}}" style="width:{{.WR.Pct}}%"></div></div>
+    <div class="bt-note">Coverage 42% (42 dari 100 kombinasi). Acak = 42%.</div>
   </div>
 
   {{/* 3D */}}
@@ -68,7 +68,7 @@
     </div>
     <div style="font-size:.78rem;color:#a0aec0">
       ✅ {{.RetroWR.Hits}} HIT &nbsp;·&nbsp; ❌ {{.RetroWR.Miss}} MISS &nbsp;·&nbsp; {{.RetroWR.Total}} sesi diuji<br>
-      <span style="color:#4a5568;font-size:.68rem">Baseline acak BBFS 6-digit = 30% | Di atas 30% = prediksi lebih baik dari random</span>
+      <span style="color:#4a5568;font-size:.68rem">Baseline acak BBFS 7-digit = 42% | Di atas 42% = prediksi lebih baik dari random</span>
     </div>
   </div>
   <div class="table-scroll">
