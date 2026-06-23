@@ -1731,12 +1731,12 @@ func buildTop3D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
                 kopList = append(kopList, ks{d, s})
         }
         sort.Slice(kopList, func(i, j int) bool { return kopList[i].s > kopList[j].s })
-        if len(kopList) > 3 {
-                kopList = kopList[:3]
+        if len(kopList) > 5 {
+                kopList = kopList[:5]
         }
         topD2 := d2Stats
-        if len(topD2) > 4 {
-                topD2 = topD2[:4]
+        if len(topD2) > 7 {
+                topD2 = topD2[:7]
         }
         for _, kop := range kopList {
                 for _, pair := range topD2 {
@@ -1758,11 +1758,29 @@ func buildTop3D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
         var result []string
         for _, c := range cands {
                 result = append(result, c.n)
-                if len(result) >= 10 {
+                if len(result) >= 20 {
                         break
                 }
         }
         return result
+}
+
+// filter3DByCoverage menghapus 3D yang sudah otomatis tercakup oleh salah satu 4D kandidat.
+// Misal: 4D "1234" sudah cover 3D "234" (nomor[1:4]), tidak perlu dipasang terpisah.
+func filter3DByCoverage(top3D []string, top4D []string) []string {
+        covered := map[string]bool{}
+        for _, n4 := range top4D {
+                if len(n4) == 4 {
+                        covered[n4[1:4]] = true
+                }
+        }
+        var out []string
+        for _, n3 := range top3D {
+                if !covered[n3] {
+                        out = append(out, n3)
+                }
+        }
+        return out
 }
 
 // buildTop4D menghasilkan top-10 kandidat 4D (AS+KOP+KEPALA+EKOR) per sesi.
@@ -1822,8 +1840,8 @@ func buildTop4D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
                 asList = append(asList, ks{d, s})
         }
         sort.Slice(asList, func(i, j int) bool { return asList[i].s > asList[j].s })
-        if len(asList) > 3 {
-                asList = asList[:3]
+        if len(asList) > 5 {
+                asList = asList[:5]
         }
         for _, as_ := range asList {
                 for _, n3d := range top3D {
@@ -1840,7 +1858,7 @@ func buildTop4D(d2Stats []D2Stat, entries []rawEntry, targetSesi int) []string {
         var result []string
         for _, c := range cands {
                 result = append(result, c.n)
-                if len(result) >= 10 {
+                if len(result) >= 20 {
                         break
                 }
         }
@@ -1915,10 +1933,25 @@ func buildBBFSFromStats(stats []D2Stat) string {
                 return ""
         }
 
-        // Buat map skor per D2 pair
+        // Buat map skor per D2 pair dengan rank-multiplier.
+        // Masalah lama: exhaustive search memilih digit yang muncul di BANYAK pair
+        // medioker, bukan digit dari pair TERATAS — akibatnya digit top-pair terlempar.
+        // Fix: pair ranking #1 dapat 10×, #5 → ~8×, #10 → ~5.5×, rank 23+ → 1× (baseline).
         pairScore := map[string]float64{}
-        for _, s := range stats {
-                pairScore[s.D2] = s.Score
+        for i, s := range stats {
+                rankMult := math.Max(1.0, 10.0-float64(i)*0.40)
+                pairScore[s.D2] = s.Score * rankMult
+        }
+        // Simetrisasi: pastikan "91" dapat minimal 60% skor "19" agar exhaustive
+        // search tidak asimetris (hanya "19" tinggi tapi "91" rendah).
+        for pair, score := range pairScore {
+                if len(pair) != 2 {
+                        continue
+                }
+                rev := string(pair[1]) + string(pair[0])
+                if pairScore[rev] < score*0.6 {
+                        pairScore[rev] = score * 0.6
+                }
         }
 
         // ── (4) Identifikasi 2D lemah dan digit yang berasal dari mereka ──────────
@@ -2321,8 +2354,8 @@ func getPredictionForDate(date string, sesi int) *Prediction {
         }
 
         allEntries := getAllResults()
-        top3D := buildTop3D(stats, allEntries, sesi)
         top4D := buildTop4D(stats, allEntries, sesi)
+        top3D := filter3DByCoverage(buildTop3D(stats, allEntries, sesi), top4D)
 
         return &Prediction{
                 Metode:   "AI-LOKAL",
@@ -2550,9 +2583,9 @@ func predictHandler(w http.ResponseWriter, r *http.Request) {
                         top5 = top5[:5]
                 }
 
-                // Build prediksi 3D dan 4D
-                top3D := buildTop3D(stats, allEntries, sesi)
+                // Build prediksi 3D dan 4D (3D difilter agar tidak dobel dengan 4D)
                 top4D := buildTop4D(stats, allEntries, sesi)
+                top3D := filter3DByCoverage(buildTop3D(stats, allEntries, sesi), top4D)
 
                 actualFull := existingResults[sesi] // nomor 4D penuh
                 actualD2, actual3D, actual4D := "", "", ""
@@ -2606,8 +2639,8 @@ func backtestHandler(w http.ResponseWriter, r *http.Request) {
                 if len(st) > 0 {
                         topD2BySesi[s] = st[0].D2
                 }
-                top3DBySesi[s] = buildTop3D(st, allEntries, s)
                 top4DBySesi[s] = buildTop4D(st, allEntries, s)
+                top3DBySesi[s] = filter3DByCoverage(buildTop3D(st, allEntries, s), top4DBySesi[s])
         }
 
         // Ambil semua prediksi AI-LOKAL yang sudah ada result-nya, join langsung
