@@ -173,7 +173,6 @@ type PageData struct {
         PaitoRows         []PaitoRow
         FreqItems         []FreqItem
         BBFS              *BBFSResult
-        BBFS2             *BBFSResult
         Error             string
         Message           string
         CurrentDate       string
@@ -209,8 +208,6 @@ func initDB() {
         if err != nil {
                 log.Fatal(err)
         }
-        db.Exec(`DROP TABLE IF EXISTS tune_history`)
-        db.Exec(`DROP TABLE IF EXISTS bbfs_sessions`)
         db.Exec(`CREATE TABLE IF NOT EXISTS results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tanggal TEXT NOT NULL,
@@ -908,64 +905,6 @@ func markovSesiTransition(entries []rawEntry, fromSesi, toSesi int) map[string]f
         return nextProb
 }
 
-func crossSesiPattern(entries []rawEntry, targetSesi int) map[string]float64 {
-        scores := map[string]float64{}
-        byDate := map[string]map[int]string{}
-        for _, e := range entries {
-                if byDate[e.tanggal] == nil {
-                        byDate[e.tanggal] = map[int]string{}
-                }
-                byDate[e.tanggal][e.sesi] = e.nomor
-        }
-        for _, sesiMap := range byDate {
-                target, ok := sesiMap[targetSesi]
-                if !ok || len(target) < 4 {
-                        continue
-                }
-                targetD2 := target[2:4]
-                for s := 1; s < targetSesi; s++ {
-                        nomor, ok := sesiMap[s]
-                        if !ok || len(nomor) < 4 {
-                                continue
-                        }
-                        if nomor[2:4] == targetD2 {
-                                gap := targetSesi - s
-                                scores[targetD2] += 1.0 / float64(gap)
-                        }
-                }
-        }
-        return scores
-}
-
-func periodikPattern(entries []rawEntry, targetSesi int) map[string]float64 {
-        sesiOnly := []string{}
-        for _, e := range entries {
-                if e.sesi == targetSesi && len(e.nomor) >= 4 {
-                        sesiOnly = append(sesiOnly, e.nomor[2:4])
-                }
-        }
-        scores := map[string]float64{}
-        n := len(sesiOnly)
-        if n < 6 {
-                return scores
-        }
-        for _, period := range []int{3, 4, 5, 6, 7} {
-                if n < period*2 {
-                        continue
-                }
-                for i := period; i < n; i++ {
-                        if sesiOnly[i] == sesiOnly[i-period] {
-                                distFromEnd := n - 1 - i
-                                if distFromEnd < period {
-                                        bonus := math.Max(0, float64(period-distFromEnd)) / float64(period)
-                                        scores[sesiOnly[i]] += bonus * 2.0
-                                }
-                        }
-                }
-        }
-        return scores
-}
-
 // streakBonus menghitung berapa kali d2 muncul berturut-turut di ujung list sesi
 func streakBonus(sesiOnly []string, d2 string) float64 {
         streak := 0
@@ -1135,136 +1074,6 @@ func adaptiveWindow(entries []rawEntry, targetSesi int, now time.Time) int {
 }
 
 
-// abCorrelation: 2 digit depan (AB) sesi sebelumnya → CD apa yang sering muncul di targetSesi
-func abCorrelation(entries []rawEntry, targetSesi int) map[string]float64 {
-        now := nowWIB()
-        prevSesi := targetSesi - 1
-        if prevSesi < 1 {
-                prevSesi = 6
-        }
-        // Cari AB terakhir dari sesi sebelumnya
-        lastAB := ""
-        for i := len(entries) - 1; i >= 0; i-- {
-                if entries[i].sesi == prevSesi && len(entries[i].nomor) >= 4 {
-                        lastAB = entries[i].nomor[0:2]
-                        break
-                }
-        }
-        if lastAB == "" {
-                return nil
-        }
-        scores := map[string]float64{}
-        total := 0.0
-        // Hitung: saat prevSesi punya AB=lastAB, CD apa yang muncul di targetSesi hari itu?
-        for _, pe := range entries {
-                if pe.sesi != prevSesi || len(pe.nomor) < 4 || pe.nomor[0:2] != lastAB {
-                        continue
-                }
-                peDate, err := time.Parse("2006-01-02", pe.tanggal)
-                if err != nil {
-                        continue
-                }
-                for _, ne := range entries {
-                        if ne.sesi != targetSesi || len(ne.nomor) < 4 {
-                                continue
-                        }
-                        neDate, err2 := time.Parse("2006-01-02", ne.tanggal)
-                        if err2 != nil {
-                                continue
-                        }
-                        diff := neDate.Sub(peDate).Hours() / 24
-                        if diff < 0 || diff > 1 {
-                                continue
-                        }
-                        age := now.Sub(peDate).Hours() / 24
-                        w := math.Exp(-age/35.0)*2.5 + 0.2
-                        scores[ne.nomor[2:4]] += w
-                        total += w
-                        break
-                }
-        }
-        if total < 0.1 {
-                return nil
-        }
-        for d2 := range scores {
-                scores[d2] /= total
-        }
-        return scores
-}
-
-// calcEkorTransitionBoost membangun matriks transisi ekor dari histori Macau sendiri.
-// Mencari ekor terakhir sebelum sesi target, lalu mengembalikan skor boost per digit ekor
-// berdasarkan seberapa sering digit itu muncul setelah ekor sebelumnya.
-func calcEkorTransitionBoost(entries []rawEntry, targetSesi int) map[string]float64 {
-        if len(entries) < 10 {
-                return nil
-        }
-
-        // Salin slice agar tidak merusak urutan di caller
-        sorted := make([]rawEntry, len(entries))
-        copy(sorted, entries)
-        sort.Slice(sorted, func(i, j int) bool {
-                if sorted[i].tanggal == sorted[j].tanggal {
-                        return sorted[i].sesi < sorted[j].sesi
-                }
-                return sorted[i].tanggal < sorted[j].tanggal
-        })
-        entries = sorted
-
-        // Bangun matriks transisi ekor → ekor berikutnya (semua sesi berurutan)
-        type ekorPair struct{ from, to string }
-        trans := map[ekorPair]int{}
-        fromCount := map[string]int{}
-        for i := 0; i < len(entries)-1; i++ {
-                if len(entries[i].nomor) < 4 || len(entries[i+1].nomor) < 4 {
-                        continue
-                }
-                from := string(entries[i].nomor[3])
-                to := string(entries[i+1].nomor[3])
-                trans[ekorPair{from, to}]++
-                fromCount[from]++
-        }
-
-        // Cari ekor terakhir yang diketahui (result sebelum sesi target)
-        lastDate := entries[len(entries)-1].tanggal
-        lastEkor := ""
-        for i := len(entries) - 1; i >= 0; i-- {
-                e := entries[i]
-                if len(e.nomor) < 4 {
-                        continue
-                }
-                // Ambil result terakhir sebelum sesi target (sesi lebih awal atau hari sebelumnya)
-                if e.sesi < targetSesi || e.tanggal < lastDate {
-                        lastEkor = string(e.nomor[3])
-                        break
-                }
-        }
-        if lastEkor == "" {
-                // Fallback: ekor dari result terakhir apapun
-                for i := len(entries) - 1; i >= 0; i-- {
-                        if len(entries[i].nomor) >= 4 {
-                                lastEkor = string(entries[i].nomor[3])
-                                break
-                        }
-                }
-        }
-        if lastEkor == "" || fromCount[lastEkor] == 0 {
-                return nil
-        }
-
-        // Hitung probabilitas transisi dari lastEkor → setiap ekor berikutnya
-        boost := map[string]float64{}
-        total := float64(fromCount[lastEkor])
-        for d := 0; d <= 9; d++ {
-                ds := strconv.Itoa(d)
-                count := trans[ekorPair{lastEkor, ds}]
-                if count > 0 {
-                        prob := float64(count) / total
-                        boost[ds] = prob // contoh: ekor "7" dapat 0.30 jika 30% transisi ke sana
-                }
-        }
-        return boost
-}
 
 func analyzeD2Enhanced(targetSesi int) []D2Stat {
         return analyzeD2EnhancedEx(targetSesi, getAllResults(), nowWIB())
@@ -1980,91 +1789,6 @@ func buildBBFSFromStats(stats []D2Stat) string {
         return strings.Join(bestCombo, "")
 }
 
-// buildBBFS2FromStats: BBFS kedua 7 digit dengan penalti pair yang sudah tercakup BBFS-A
-func buildBBFS2FromStats(stats []D2Stat, firstDigits string) string {
-        if len(stats) == 0 {
-                return ""
-        }
-        pairScore := map[string]float64{}
-        for _, s := range stats {
-                score := s.Score
-                inFirst0 := strings.ContainsRune(firstDigits, rune(s.D2[0]))
-                inFirst1 := strings.ContainsRune(firstDigits, rune(s.D2[1]))
-                if inFirst0 && inFirst1 {
-                        score *= 0.1
-                } else if inFirst0 || inFirst1 {
-                        score *= 0.6
-                }
-                pairScore[s.D2] = score
-        }
-
-        digitContrib := map[string]float64{}
-        for pair, score := range pairScore {
-                if len(pair) == 2 {
-                        digitContrib[string(pair[0])] += score
-                        digitContrib[string(pair[1])] += score
-                }
-        }
-
-        allDigits := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-        bestScore := -1.0
-        bestCombo := []string{}
-
-        // C(10,7) = 120 kombinasi
-        for i := 0; i < 10; i++ {
-                for j := i + 1; j < 10; j++ {
-                        for k := j + 1; k < 10; k++ {
-                                for l := k + 1; l < 10; l++ {
-                                        for m := l + 1; m < 10; m++ {
-                                                for n := m + 1; n < 10; n++ {
-                                                        for o := n + 1; o < 10; o++ {
-                                                                combo := []string{
-                                                                        allDigits[i], allDigits[j], allDigits[k],
-                                                                        allDigits[l], allDigits[m], allDigits[n], allDigits[o],
-                                                                }
-                                                                score := 0.0
-                                                                for _, d1 := range combo {
-                                                                        for _, d2 := range combo {
-                                                                                if d1 != d2 {
-                                                                                        score += pairScore[d1+d2]
-                                                                                }
-                                                                        }
-                                                                }
-                                                                if score > bestScore {
-                                                                        bestScore = score
-                                                                        bestCombo = combo
-                                                                }
-                                                        }
-                                                }
-                                        }
-                                }
-                        }
-                }
-        }
-
-        if len(bestCombo) == 0 {
-                type kv struct {
-                        d string
-                        v float64
-                }
-                var sorted []kv
-                for d, v := range digitContrib {
-                        sorted = append(sorted, kv{d, v})
-                }
-                sort.Slice(sorted, func(i, j int) bool { return sorted[i].v > sorted[j].v })
-                for _, kv := range sorted {
-                        bestCombo = append(bestCombo, kv.d)
-                        if len(bestCombo) == 7 {
-                                break
-                        }
-                }
-        }
-
-        sort.Slice(bestCombo, func(i, j int) bool {
-                return digitContrib[bestCombo[i]] > digitContrib[bestCombo[j]]
-        })
-        return strings.Join(bestCombo, "")
-}
 
 func buildAlasan(stats []D2Stat, sesi int) string {
         if len(stats) == 0 {
@@ -2899,17 +2623,6 @@ func seedPredictions() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-// cleanupBBFS2 hapus semua entry AI-LOKAL-2 dari database (tidak digunakan lagi)
-func cleanupBBFS2() {
-        res, err := db.Exec(`DELETE FROM bbfs_preds WHERE source='AI-LOKAL-2'`)
-        if err != nil {
-                return
-        }
-        n, _ := res.RowsAffected()
-        if n > 0 {
-                log.Printf("Cleanup: hapus %d entri AI-LOKAL-2 dari bbfs_preds", n)
-        }
-}
 
 // migrateBBFS5to6 upgrade semua entry bbfs_preds < 7 digit → 7-digit menggunakan algoritma baru
 func migrateBBFS5to6() {
@@ -2999,7 +2712,6 @@ func main() {
         globalWeights = loadLearnedWeights()
         globalWeightsMu.Unlock()
         seedPredictions()
-        cleanupBBFS2()
         migrateBBFS5to6()
         backfillPredComponents()
         loadTemplates()
