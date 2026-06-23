@@ -80,7 +80,7 @@
 {{/* ── Efektivitas Komponen AI ── */}}
 <div class="section-title" style="margin-top:1.5rem">🎓 Auto-Tuning Komponen AI</div>
 
-{{if .CompStats}}
+{{if and .CompStats (gt (len .CompStats) 0)}}
 {{with index .CompStats 0}}
 {{if .Active}}
 <div class="card" style="margin-bottom:1rem">

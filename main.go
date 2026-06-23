@@ -276,6 +276,17 @@ type CompStatRow struct {
 var globalWeights = LearnedWeights{MarkovMult: 1.0, CorrMult: 1.0}
 var globalWeightsMu sync.RWMutex
 
+// retuneRunning mencegah concurrent retuneWeights goroutine (race condition)
+var retuneMu sync.Mutex
+var retuneRunning bool
+
+// sesiStatsCache: cache calcSesiStats agar tidak dipanggil 6x per halaman prediksi
+var (
+        cachedSesiStats   []SesiStat
+        cachedSesiStatsAt time.Time
+        cachedSesiStatsMu sync.RWMutex
+)
+
 func loadLearnedWeights() LearnedWeights {
         var lw LearnedWeights
         lw.MarkovMult = 1.0
@@ -287,6 +298,20 @@ func loadLearnedWeights() LearnedWeights {
 
 // retuneWeights menghitung ulang bobot dari eval history dan menyimpannya
 func retuneWeights() {
+        // Guard: cegah concurrent execution (race condition jika batch result masuk cepat)
+        retuneMu.Lock()
+        if retuneRunning {
+                retuneMu.Unlock()
+                return
+        }
+        retuneRunning = true
+        retuneMu.Unlock()
+        defer func() {
+                retuneMu.Lock()
+                retuneRunning = false
+                retuneMu.Unlock()
+        }()
+
         type avg struct{ hit, miss, hitN, missN float64 }
         stats := map[string]*avg{
                 "markov": {},
@@ -659,8 +684,27 @@ func calcWinRate() WinRate {
 // calcSesiStats hitung akurasi per sesi 1-6
 // calcSesiWeight mengembalikan bobot dinamis untuk sesiFreq berdasarkan akurasi
 // historis sesi tersebut. Semakin tinggi win rate, semakin besar bobot diberikan.
+// getCachedSesiStats mengembalikan calcSesiStats() dengan cache 5 menit
+// sehingga tidak dipanggil 6x berturut-turut saat render halaman prediksi
+func getCachedSesiStats() []SesiStat {
+        cachedSesiStatsMu.RLock()
+        stats := cachedSesiStats
+        age := time.Since(cachedSesiStatsAt)
+        cachedSesiStatsMu.RUnlock()
+
+        if stats == nil || age > 5*time.Minute {
+                fresh := calcSesiStats()
+                cachedSesiStatsMu.Lock()
+                cachedSesiStats = fresh
+                cachedSesiStatsAt = time.Now()
+                cachedSesiStatsMu.Unlock()
+                return fresh
+        }
+        return stats
+}
+
 func calcSesiWeight(targetSesi int) float64 {
-        stats := calcSesiStats()
+        stats := getCachedSesiStats()
         for _, s := range stats {
                 if s.Sesi != targetSesi {
                         continue
@@ -1227,6 +1271,12 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 return nil
         }
 
+        // fullEntries disimpan sebelum window filter.
+        // Markov & lookup "last entry" BUTUH urutan kronologis penuh tanpa gap —
+        // kalau pakai data yang sudah dipotong window, transisi di batas cutoff
+        // menjadi palsu (entry non-consecutive diperlakukan seolah berurutan).
+        fullEntries := allEntries
+
         // ── Upgrade 3: Rolling Window Adaptif ────────────────────────────────────
         // Pilih window yang menghasilkan distribusi paling terkonsentrasi.
         days := adaptiveWindow(allEntries, targetSesi, now)
@@ -1370,12 +1420,13 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 prevSesi = 6
         }
 
-        // Markov umum (semua sesi, dari result prevSesi terakhir)
-        markovGen := markovTransition(allEntries)
+        // Markov umum: pakai fullEntries (urutan penuh tanpa gap window) agar
+        // probabilitas transisi tidak terdistorsi oleh batas cutoff adaptive window.
+        markovGen := markovTransition(fullEntries)
         lastPrevSesiD2 := ""
-        for i := len(allEntries) - 1; i >= 0; i-- {
-                if allEntries[i].sesi == prevSesi && len(allEntries[i].nomor) >= 4 {
-                        lastPrevSesiD2 = allEntries[i].nomor[2:4]
+        for i := len(fullEntries) - 1; i >= 0; i-- {
+                if fullEntries[i].sesi == prevSesi && len(fullEntries[i].nomor) >= 4 {
+                        lastPrevSesiD2 = fullEntries[i].nomor[2:4]
                         break
                 }
         }
@@ -1397,9 +1448,9 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
         // ── Upgrade 1: Sesi-Self Markov (sesi N → sesi N hari berikutnya) ────────
         selfMarkov := markovSesiSelf(allEntries, targetSesi)
         lastSelfD2 := ""
-        for i := len(allEntries) - 1; i >= 0; i-- {
-                if allEntries[i].sesi == targetSesi && len(allEntries[i].nomor) >= 4 {
-                        lastSelfD2 = allEntries[i].nomor[2:4]
+        for i := len(fullEntries) - 1; i >= 0; i-- {
+                if fullEntries[i].sesi == targetSesi && len(fullEntries[i].nomor) >= 4 {
+                        lastSelfD2 = fullEntries[i].nomor[2:4]
                         break
                 }
         }
