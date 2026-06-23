@@ -139,7 +139,7 @@ BBFS : {{range .BBFSList}}{{.}} {{end}}
   <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.85rem;align-items:flex-end">
     <div>
       <div style="font-size:.68rem;color:#637087;margin-bottom:.25rem">Bet per 2D (BBFS)</div>
-      <input id="bet2d" type="number" value="200" min="100" step="100"
+      <input id="bet2d" type="number" value="1000" min="100" step="100"
         style="width:90px;background:#0d1220;border:1px solid #2a3d52;color:#e2e8f0;border-radius:6px;padding:.35rem .5rem;font-size:.85rem"
         oninput="hitungModal()">
     </div>
@@ -156,7 +156,7 @@ BBFS : {{range .BBFSList}}{{.}} {{end}}
         oninput="hitungModal()">
     </div>
     <div style="font-size:.65rem;color:#4a5568;line-height:1.5;padding-bottom:.1rem">
-      Bayaran: 2D ×70 &nbsp;|&nbsp; 3D ×400 &nbsp;|&nbsp; 4D ×3000
+      Bayaran: 2D ×95 &nbsp;|&nbsp; 3D ×950 &nbsp;|&nbsp; 4D ×9000
     </div>
   </div>
 
@@ -223,9 +223,9 @@ function hitungModal() {
   var bet4d = parseInt(document.getElementById('bet4d').value) || 200;
 
   var PAIRS_BBFS = 42;
-  var PAY_2D = 70;
-  var PAY_3D = 400;
-  var PAY_4D = 3000;
+  var PAY_2D = 95;
+  var PAY_3D = 950;
+  var PAY_4D = 9000;
 
   var cards = document.querySelectorAll('.sesi6-card[data-sesi]');
   var tbody = document.getElementById('tbody-kalkulator');
