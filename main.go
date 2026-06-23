@@ -1380,33 +1380,6 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
         }
 
-        // ── Gap/Cooldown Boost: 2D yang lama tidak muncul di sesi ini ────────────
-        // Hanya berlaku untuk pair yang sudah pernah muncul secara global (allFreq > 0.5)
-        // agar pair yang memang jarang/tidak relevan tidak mendapat boost palsu
-        for _, s := range stats {
-                if s.allFreq < 0.5 {
-                        s.gap = 0 // pair terlalu jarang secara global → skip
-                        continue
-                }
-                if s.lastSesiIdx == 9999 {
-                        s.gap = 2.0 // belum pernah muncul di sesi ini tapi aktif secara global
-                        continue
-                }
-                switch {
-                case s.lastSesiIdx > 25:
-                        s.gap = 3.5
-                case s.lastSesiIdx > 18:
-                        s.gap = 2.5
-                case s.lastSesiIdx > 12:
-                        s.gap = 1.8
-                case s.lastSesiIdx > 8:
-                        s.gap = 1.0
-                case s.lastSesiIdx > 5:
-                        s.gap = 0.5 // sebelumnya tidak ada boost di sini
-                default:
-                        s.gap = 0
-                }
-        }
 
         // ── Streak Analysis ───────────────────────────────────────────────────────
         for _, d2 := range sesiOnly {
@@ -1463,58 +1436,10 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 }
         }
 
-        // Pola lintas sesi
-        for d2, score := range crossSesiPattern(allEntries, targetSesi) {
-                ensure(d2)
-                stats[d2].markov += score * 2.5
-        }
-
-        // Pola periodik
-        for d2, score := range periodikPattern(allEntries, targetSesi) {
-                ensure(d2)
-                stats[d2].markov += score * 3.5
-        }
-
-        // ── Upgrade 2: Digit Pair Correlation ────────────────────────────────────
+        // ── Digit Pair Correlation ────────────────────────────────────────────────
         for d2, score := range digitPairCorrelation(allEntries, targetSesi) {
                 ensure(d2)
                 stats[d2].corr = score
-        }
-
-        // ── Upgrade 7: AB Correlation — CD setelah pola AB sesi sebelumnya ────────
-        for d2, score := range abCorrelation(allEntries, targetSesi) {
-                ensure(d2)
-                stats[d2].corr += score * 3.5
-        }
-
-        // ── Upgrade 8: Ekor Transition Boost — dari matriks transisi Macau sendiri ─
-        // Boost D2 pair yang digit ekor-nya (digit ke-2) cocok dengan prediksi transisi.
-        // Pastikan SEMUA pair dengan ekor terprediksi ada di stats (termasuk pair baru),
-        // agar sinyal ekor benar-benar menyatu dengan sistem prediksi 2D.
-        ekorTrans := calcEkorTransitionBoost(allEntries, targetSesi)
-        if ekorTrans != nil {
-                // Langkah 1: buat entries untuk SEMUA kemungkinan kepala × ekor terprediksi
-                // Ini memastikan pair yang belum pernah muncul pun bisa dipertimbangkan
-                for ekorDigit, prob := range ekorTrans {
-                        if prob < 0.08 { // minimal 8% probabilitas (noise cutoff)
-                                continue
-                        }
-                        for d1 := 0; d1 <= 9; d1++ {
-                                pair := fmt.Sprintf("%d%s", d1, ekorDigit)
-                                ensure(pair)
-                        }
-                }
-                // Langkah 2: apply ekorBoost ke semua pair sesuai digit ekor-nya
-                for d2, s := range stats {
-                        if len(d2) != 2 {
-                                continue
-                        }
-                        ekor := string(d2[1])
-                        if prob, ok := ekorTrans[ekor]; ok {
-                                // probabilitas 30% → boost 2.4, probabilitas 10% → boost 0.8
-                                s.ekorBoost = prob * 8.0
-                        }
-                }
         }
 
         // ── Gabungkan semua komponen ke skor akhir ────────────────────────────────
@@ -1525,13 +1450,11 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                 // - tidak muncul di seluruh data (allFreq==0)
                 // - markov rendah (<0.5)
                 // - tidak ada korelasi (<0.05)
-                // - tidak ada ekor boost (<0.3 = prob < 3.75%) ← tambahan baru
-                if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 && s.corr < 0.05 && s.ekorBoost < 0.3 {
+                if s.sesiFreq == 0 && s.allFreq == 0 && s.markov < 0.5 && s.corr < 0.05 {
                         continue
                 }
-                // Formula: sesiFreq (auto-bobot) + allFreq + markov + streak
-                //          + gap (overdue) + ekorBoost (transisi ekor) + corr (korelasi posisi)
-                // Setiap komponen dikalikan bobot yang dipelajari dari backtesting
+                // Formula: sesiFreq + allFreq + markov + streak + corr
+                // Komponen noise (gap, ekorBoost, crossSesi, periodik) sudah dihapus
                 globalWeightsMu.RLock()
                 gw := globalWeights
                 globalWeightsMu.RUnlock()
@@ -1539,9 +1462,7 @@ func analyzeD2Enhanced(targetSesi int) []D2Stat {
                         s.allFreq*1.5 +
                         s.markov*gw.MarkovMult +
                         s.streak +
-                        s.corr*5.5*gw.CorrMult +
-                        s.gap*2.0 +
-                        s.ekorBoost
+                        s.corr*5.5*gw.CorrMult
                 lastSeen := s.lastIdx
                 if s.lastSesiIdx < lastSeen {
                         lastSeen = s.lastSesiIdx
